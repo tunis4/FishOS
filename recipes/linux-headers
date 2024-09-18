@@ -1,0 +1,12 @@
+name=linux-headers
+from_source=linux
+revision=1
+imagedeps="base-devel rsync"
+
+build() {
+	true
+}
+
+package() {
+	true
+}

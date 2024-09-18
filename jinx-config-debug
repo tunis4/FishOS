@@ -1,0 +1,2 @@
+. ${base_dir}/jinx-config
+export FISHOS_DEBUG=1

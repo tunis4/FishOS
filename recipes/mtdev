@@ -1,0 +1,24 @@
+name=mtdev
+version=1.1.7
+revision=1
+tarball_url="https://bitmath.org/code/mtdev/mtdev-${version}.tar.gz"
+tarball_blake2b="3170de9b83e996ea75fc8530de1d33dbc45d818dbf2b7efb30a1d40981ea48e6b30b572f7791ca0375428464cf6c34e647ebf35ef057abc52d08af2ee333de95"
+source_hostdeps="automake autoconf libtool pkg-config"
+hostdeps="gcc autoconf automake libtool pkg-config"
+deps="core-libs"
+
+regenerate() {
+    autotools_recursive_regen
+}
+
+build() {
+    autotools_configure
+
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+    post_package_strip
+}

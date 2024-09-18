@@ -1,0 +1,26 @@
+name=curl
+version=8.5.0
+revision=1
+tarball_url="https://github.com/curl/curl/releases/download/curl-$(echo ${version} | sed 's/\./_/g')/curl-${version}.tar.xz"
+tarball_blake2b="cfd591f9703b9c63712dbe74494b05a80ce5a4fc4f8fc0fbf57058578eed5f33d71277f688d5d9f409bcd82e3a4cacaa5615a44f2a7c554559c6be7dd5188893"
+source_hostdeps="automake autoconf libtool pkg-config"
+hostdeps="gcc autoconf automake libtool pkg-config"
+deps="core-libs openssl zlib zstd"
+
+regenerate() {
+    autotools_recursive_regen
+}
+
+build() {
+    autotools_configure \
+        --enable-threaded-resolver \
+        --with-openssl
+
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+    post_package_strip
+}

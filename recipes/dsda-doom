@@ -1,0 +1,26 @@
+name=dsda-doom
+version=0.22.1
+revision=1
+tarball_url="https://github.com/kraflab/dsda-doom/archive/refs/tags/v${version}.tar.gz"
+tarball_blake2b="0fa950c050df84eec67faba43c0cb054e1529607954bd8c55624becb07aeed0852eab729872c4528eac201abd95540899a957214372520574fb5248220fa4586"
+imagedeps="ninja git"
+hostdeps="gcc cmake pkg-config rdatawad"
+deps="core-libs zlib sdl2 glu"
+
+build() {
+    cmake \
+        -GNinja \
+        -DCMAKE_TOOLCHAIN_FILE=${base_dir}/build-support/CMakeToolchain.txt \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DIMPORT_EXECUTABLES=/usr/local/rdatawad/ImportExecutables.cmake \
+        ${source_dir}/prboom2
+
+    ninja
+}
+
+package() {
+    DESTDIR="${dest_dir}" ninja install
+
+    post_package_strip
+}

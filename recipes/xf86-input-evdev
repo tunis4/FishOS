@@ -1,0 +1,25 @@
+name=xf86-input-evdev
+version=b9327e6b286295e6ef304ef14dcf1f408a4fadb2
+revision=1
+tarball_url="https://gitlab.freedesktop.org/xorg/driver/xf86-input-evdev/-/archive/${version}/xf86-input-evdev-${version}.tar.gz"
+tarball_blake2b="25358c82ba8006bbd7c5db090e6ed620f34adde90181cd069880980cad28e9d1356602e388c2a8f4f3c50739cd71ead92a46a99b79d5712899c096f140a02dc8"
+source_hostdeps="automake autoconf libtool pkg-config"
+source_deps="xorg-util-macros"
+hostdeps="gcc autoconf automake libtool pkg-config"
+deps="core-libs xorg-server xorg-util-macros libx11 libevdev mtdev"
+
+regenerate() {
+    autotools_recursive_regen
+}
+
+build() {
+    autotools_configure
+
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+    post_package_strip
+}

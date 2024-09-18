@@ -1,0 +1,22 @@
+name=libevdev
+version=1.13.3
+revision=1
+tarball_url="https://freedesktop.org/software/libevdev/libevdev-${version}.tar.xz"
+tarball_blake2b="d4a808ad13e7e5b818bde0b885eb53e109afb0d0ec9b72a80a05a36135c3db955efd092b8f91f0f2393a1f717e2517ed916326dbb32eae13275b89ee0f40003a"
+imagedeps="meson ninja python"
+hostdeps="gcc pkg-config"
+deps="core-libs"
+
+build() {
+    meson_configure \
+        -Ddocumentation=disabled \
+        -Dtests=disabled
+
+    ninja -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" ninja install
+
+    post_package_strip
+}

@@ -1,119 +1,61 @@
-KERNEL := fishos.elf
-ISO := fishos.iso
+ISO := /tmp/fishos.iso
+DISK := fishos.qcow2
 
-CC = x86_64-elf-gcc
-CPP = x86_64-elf-g++
-NASM = nasm
-
-CFLAGS = -O0 -g3 -pipe -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -fsanitize=undefined
-CPPFLAGS = $(CFLAGS)
-NASMFLAGS = -felf64 -g
-LDFLAGS =
-
-INTERNALLDFLAGS :=          \
-	-nostdlib               \
-	-static                 \
-	-z max-page-size=0x1000 \
-	-T linker.ld
-
-INTERNALCFLAGS :=           \
-	-Isrc                   \
-	-ffreestanding          \
-	-fstack-protector       \
-	-fno-pie                \
-	-fno-pic                \
-	-fno-omit-frame-pointer \
-	-march=x86-64           \
-	-mabi=sysv              \
-	-mno-80387              \
-	-mno-mmx                \
-	-mno-sse                \
-	-mno-sse2               \
-	-mno-red-zone           \
-	-mgeneral-regs-only     \
-	-mcmodel=kernel         \
-	-MMD
-
-INTERNALCPPFLAGS :=     \
-	$(INTERNALCFLAGS)   \
-	-std=gnu++20        \
-	-fno-exceptions     \
-	-fno-rtti           \
-	-fno-use-cxa-atexit
-
-CFILES := $(shell find ./src -type f -name '*.c')
-OBJ := $(CFILES:./src/%.c=obj/%.o)
-CPPFILES := $(shell find ./src -type f -name '*.cpp')
-OBJ += $(CPPFILES:./src/%.cpp=obj/%.o)
-ASMFILES := $(shell find ./src -type f -name '*.asm')
-OBJ += $(ASMFILES:./src/%.asm=obj/%.o)
-OBJ += obj/font.o
-
-.PHONY: all clean runbios runuefi installuefi
+.PHONY: all run-tcg-bios run-uefi-kvm distro-base kernel-clean init-clean base-files-clean clean dist-clean iso-clean
 
 all: $(ISO)
 
-runbios: $(ISO)
-	@echo "[QEMU]"
-	@qemu-system-x86_64 -cdrom $(ISO) -m 128M -serial stdio \
-		-no-reboot -no-shutdown -M smm=off -s
+run-tcg-bios: $(ISO)
+	qemu-system-x86_64 -cdrom $(ISO) -m 8G -serial stdio \
+		-no-reboot -no-shutdown -M smm=off -s -d int
 
-runuefi: installuefi
-	@echo "[QEMU]"
-	@qemu-system-x86_64 -cdrom $(ISO) -m 128M -serial stdio \
-		-no-reboot -no-shutdown -M smm=off -smp 2 \
-		-drive if=pflash,format=raw,readonly=on,file=ovmf/OVMF_CODE.fd \
-		-drive if=pflash,format=raw,file=ovmf/OVMF_VARS.fd \
-		-net nic,model=e1000 -net user -machine q35 \
-		-enable-kvm -cpu host
+run-uefi-kvm: ovmf/OVMF.fd $(ISO) $(DISK)
+	qemu-system-x86_64 -cdrom $(ISO) -m 12G -serial stdio \
+		-no-reboot -no-shutdown -M smm=off -smp 4 -machine q35 \
+		-bios ovmf/OVMF.fd \
+		-drive file=$(DISK),if=virtio \
+		-nic user,model=virtio-net-pci \
+		-enable-kvm -cpu host -s
 
-installuefi: $(ISO)
-	@echo [UEFI]
-	@mkdir -p ovmf
-	@cp /usr/share/ovmf/x64/OVMF_CODE.fd ovmf/
-	@cp /usr/share/ovmf/x64/OVMF_VARS.fd ovmf/
+ovmf/OVMF.fd:
+	mkdir -p ovmf
+	cd ovmf && curl -o OVMF.fd https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd
 
-$(ISO): $(KERNEL)
-	@echo "[ISO] $< | $@"
-	@mkdir -p isoroot
-	@cp $(KERNEL) limine.cfg limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin isoroot/
-	@cp userspace/test/build/test initramfs/bin/
-	@tar -c --format=ustar -f isoroot/initramfs.tar -C initramfs .
-	@xorriso -as mkisofs -b limine-bios-cd.bin \
-		-no-emul-boot -boot-load-size 4 -boot-info-table \
-		--efi-boot limine-uefi-cd.bin \
-		-efi-boot-part --efi-boot-image --protective-msdos-label \
-		isoroot -o $(ISO)
+./jinx:
+	curl -Lo jinx https://raw.githubusercontent.com/mintsuki/jinx/353c468765dd9404bacba8e5626d0830528e4300/jinx
+	chmod +x jinx
 
-# Link rules for the final kernel executable.
-$(KERNEL): $(OBJ)
-	@echo "[LD] $@"
-	@$(CPP) $(OBJ) $(LDFLAGS) $(INTERNALLDFLAGS) -o $@
+distro-base: ./jinx
+	./jinx build base-files kernel init bash binutils bzip2 coreutils diffutils findutils gawk gcc gmp grep gzip less make mpc mpfr nano ncurses pcre2 readline sed tar tzdata xz zlib zstd
 
-# Compilation rules for *.c files.
-obj/%.o: src/%.c
-	@echo "[CC] $< | $@"
-	@mkdir -p $(shell dirname $@)
-	@$(CC) $(CFLAGS) $(INTERNALCFLAGS) -c $< -o $@
+distro-xorg: distro-base
+	./jinx build xorg-server xf86-input-evdev xf86-video-fbdev xorg-twm xorg-xeyes
 
-# Compilation rules for *.cpp files.
-obj/%.o: src/%.cpp
-	@echo "[CPP] $< | $@"
-	@mkdir -p $(shell dirname $@)
-	@$(CPP) $(CPPFLAGS) $(INTERNALCPPFLAGS) -c $< -o $@
+$(ISO):
+	rm -f builds/kernel.built builds/kernel.packaged
+	$(MAKE) distro-base
+	./build-support/makeiso.sh $(ISO)
 
-# Compilation rules for *.asm files.
-obj/%.o: src/%.asm
-	@echo "[ASM] $< | $@"
-	@mkdir -p $(shell dirname $@)
-	@$(NASM) $(NASMFLAGS) -o $@ $<
+$(DISK):
+	qemu-img create -f qcow2 fishos.qcow2 4G
 
-obj/font.o:
-	@objcopy -O elf64-x86-64 -B i386 -I binary font.psfu obj/font.o
+kernel-clean:
+	rm -rf builds/kernel* pkgs/kernel*
 
-# Remove object files and the final executable.
-clean: cleaniso
-	rm -rf $(KERNEL) obj/
+init-clean:
+	rm -rf builds/init* pkgs/init*
 
-cleaniso:
-	rm -rf $(ISO) isoroot/
+base-files-clean:
+	rm -rf builds/base-files* pkgs/base-files*
+
+iso-clean:
+	rm -rf $(ISO)
+
+clean: kernel-clean init-clean base-files-clean iso-clean
+	rm -rf sysroot
+
+dist-clean: ./jinx
+	./jinx clean
+	rm -rf sysroot $(ISO) jinx ovmf
+	chmod -R 777 .jinx-cache
+	rm -rf .jinx-cache

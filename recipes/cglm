@@ -1,0 +1,24 @@
+name=cglm
+version=0.9.2
+revision=1
+tarball_url="https://github.com/recp/cglm/archive/refs/tags/v${version}.tar.gz"
+tarball_blake2b="82f119f4eeeb2dadee1b18f41e10e4f47db02cbd9b4d6548fa0b47592973f571bf95294fbbcafaf17bf8b09ebe452f72a93a8882f15479fbce92db3d6e1f2b2e"
+source_hostdeps="automake autoconf libtool pkg-config"
+hostdeps="gcc autoconf automake libtool pkg-config"
+deps="core-libs"
+
+regenerate() {
+    autotools_recursive_regen
+}
+
+build() {
+    autotools_configure
+
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+    post_package_strip
+}
