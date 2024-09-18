@@ -1,0 +1,14 @@
+[binaries]
+c = 'x86_64-pc-fishos-mlibc-gcc'
+cpp = 'x86_64-pc-fishos-mlibc-g++'
+ar = 'x86_64-pc-fishos-mlibc-ar'
+nm = 'x86_64-pc-fishos-mlibc-nm'
+strip = 'x86_64-pc-fishos-mlibc-strip'
+pkg-config = 'x86_64-pc-fishos-mlibc-pkg-config'
+nasm = 'nasm'
+
+[host_machine]
+system = 'fishos'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'

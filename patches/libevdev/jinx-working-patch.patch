@@ -1,0 +1,35 @@
+diff --git a/include/linux/input.h b/include/linux/input.h
+index 03c512e..34fdf98 100644
+--- a/include/linux/input.h
++++ b/include/linux/input.h
+@@ -1,4 +1,4 @@
+-#ifdef __linux__
++#if defined(__linux__) || defined (__fishos__)
+ #include "linux/input.h"
+ #elif __FreeBSD__
+ #include "freebsd/input.h"
+diff --git a/include/linux/uinput.h b/include/linux/uinput.h
+index 1ef4e3b..bb8b6f2 100644
+--- a/include/linux/uinput.h
++++ b/include/linux/uinput.h
+@@ -1,4 +1,4 @@
+-#ifdef __linux__
++#if defined(__linux__) || defined (__fishos__)
+ #include "linux/uinput.h"
+ #elif __FreeBSD__
+ #include "freebsd/uinput.h"
+diff --git a/meson.build b/meson.build
+index 1ed43a9..f945dee 100644
+--- a/meson.build
++++ b/meson.build
+@@ -40,8 +40,8 @@ pkgconfig = import('pkgconfig')
+ dep_lm = cc.find_library('m')
+ dep_rt = cc.find_library('rt')
+ 
+-input_h = dir_root / 'include' / 'linux' / host_machine.system() / 'input.h'
+-input_event_codes_h = dir_root / 'include' / 'linux' / host_machine.system() / 'input-event-codes.h'
++input_h = dir_root / 'include' / 'linux' / 'linux' / 'input.h'
++input_event_codes_h = dir_root / 'include' / 'linux' / 'linux' / 'input-event-codes.h'
+ 
+ # event-names.h
+ make_event_names = find_program('libevdev/make-event-names.py')

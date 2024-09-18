@@ -1,0 +1,21 @@
+name=doomgeneric
+version=b694f097ab8271c0a59bb52de631cbaf42ae0fa7
+revision=1
+tarball_url="https://github.com/ozkl/doomgeneric/archive/${version}.tar.gz"
+tarball_sha512=b1e71af6bb762a1eb3be71b4cbb43abba41a246d4232f4e3cb8efe9a4c268a3f1adbde14cc6636f8ea4e7475a4f56951dbaadc5f01eeb319a2f98fa0324d9e16
+hostdeps="gcc binutils"
+deps="core-libs libx11"
+
+regenerate() {
+    true
+}
+
+build() {
+	cp -rp ${source_dir}/doomgeneric/* .
+	make CROSS_COMPILE=x86_64-pc-fishos-mlibc- CC=x86_64-pc-fishos-mlibc-gcc CFLAGS="-Wno-implicit-function-declaration -Wno-int-conversion"
+}
+
+package() {
+	mkdir -p ${dest_dir}/usr/bin
+	cp -f doomgeneric ${dest_dir}/usr/bin/doomgeneric
+}

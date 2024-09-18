@@ -1,0 +1,34 @@
+name=binutils
+from_source=binutils
+revision=1
+imagedeps="gcc"
+hostdeps="autoconf-2.69 automake libtool pkg-config"
+
+build() {
+    "${source_dir}"/configure \
+        --prefix="${prefix}" \
+        --target=${OS_TRIPLET} \
+        --with-sysroot="${sysroot_dir}" \
+        --enable-separate-code \
+        --enable-cet \
+        --enable-default-execstack=no \
+        --enable-deterministic-archives \
+        --enable-gold \
+        --enable-ld=default \
+        --enable-new-dtags \
+        --enable-plugins \
+        --enable-relro \
+        --enable-threads \
+        --disable-nls \
+        --disable-werror \
+        --with-pic
+
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+        strip_command=strip \
+    post_package_strip
+}

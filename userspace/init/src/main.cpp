@@ -1,0 +1,17 @@
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+int main() {
+    setenv("TERM", "linux", 1);
+    setenv("USER", "root", 1);
+    setenv("HOME", "/root", 1);
+    setenv("PATH", "/usr/local/bin:/usr/bin", 1);
+
+    char *bash_argv[] = { strdup("/usr/bin/bash"), strdup("-l"), NULL };
+    if (execvp(bash_argv[0], bash_argv) < 0)
+        perror("execvp");
+    
+    return 0;
+}
