@@ -69,7 +69,7 @@ namespace gfx {
     isize FramebufferDevNode::mmap(vfs::FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) {
         sched::Process *process = cpu::get_current_thread()->process;
         u64 page_flags = mem::vmm::mmap_prot_to_page_flags(prot);
-        process->pagemap->map_pages((uptr)fb->addr - mem::vmm::get_hhdm(), addr, length, page_flags);
+        process->pagemap->map_pages((uptr)fb->addr - mem::vmm::get_hhdm(), addr, length, page_flags | PAGE_WRITE_COMBINING);
         return addr;
     }
 
