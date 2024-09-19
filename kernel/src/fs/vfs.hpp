@@ -99,7 +99,7 @@ namespace vfs {
     Entry* get_root_entry();
 
     Entry* lookup(Entry *parent, const char *filename);
-    Entry* path_to_node(const char *path, Entry *starting_point = nullptr, bool follow_last_symlink = true);
+    Entry* path_to_entry(const char *path, Entry *starting_point = nullptr, bool follow_last_symlink = true);
 
     struct FileDescription {
         VNode *vnode;

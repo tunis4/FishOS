@@ -174,7 +174,7 @@ namespace sched {
             vfs::VNode *ld_file;
             {
                 vfs::Entry *starting_point = ld_path[0] != '/' ? process->cwd : nullptr;
-                auto *entry = vfs::path_to_node(ld_path, starting_point);
+                auto *entry = vfs::path_to_entry(ld_path, starting_point);
                 if (entry->vnode == nullptr)
                     return err = -ENOENT;
                 if (entry->vnode->type == vfs::NodeType::DIRECTORY)
@@ -284,7 +284,7 @@ namespace sched {
             thread->saved_kernel_stack = thread->kernel_stack;
         }
 
-        auto *console_entry = vfs::path_to_node("/dev/console");
+        auto *console_entry = vfs::path_to_entry("/dev/console");
         ASSERT(console_entry->vnode != nullptr);
         process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_RDONLY), 0)); // stdin
         process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_WRONLY), 0)); // stdout
@@ -480,7 +480,7 @@ namespace sched {
         vfs::VNode *elf_file;
         {
             vfs::Entry *starting_point = path[0] != '/' ? process->cwd : nullptr;
-            auto *entry = vfs::path_to_node(path, starting_point);
+            auto *entry = vfs::path_to_entry(path, starting_point);
             if (entry->vnode == nullptr)
                 return -ENOENT;
             if (entry->vnode->type != vfs::NodeType::REGULAR)

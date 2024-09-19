@@ -152,7 +152,7 @@ extern "C" [[noreturn]] void _start() {
 }
 
 static void create_device_file(const char *path, uint major, uint minor, bool is_char) {
-    auto *entry = vfs::path_to_node(path, nullptr);
+    auto *entry = vfs::path_to_entry(path, nullptr);
     ASSERT(entry->vnode == nullptr);
     if (is_char)
         entry->vnode = dev::CharDevNode::create_node(dev::make_dev_id(major, minor));
@@ -181,7 +181,7 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
     create_device_file("/dev/full",     1, 7, true);
     create_device_file("/dev/console",  5, 1, true);
     create_device_file("/dev/fb0",     29, 0, true);
-    auto *entry = vfs::path_to_node("/dev/input", nullptr);
+    auto *entry = vfs::path_to_entry("/dev/input", nullptr);
     ASSERT(entry->vnode == nullptr);
     entry->create(vfs::NodeType::DIRECTORY);
     if (dev::input::main_keyboard)
@@ -189,7 +189,7 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
     if (dev::input::main_mouse)
         create_device_file("/dev/input/event1", 13, 65, true);
 
-    auto *init_entry = vfs::path_to_node("/usr/bin/init");
+    auto *init_entry = vfs::path_to_entry("/usr/bin/init");
     if (init_entry->vnode == nullptr)
         panic("Failed to find /usr/bin/init");
 

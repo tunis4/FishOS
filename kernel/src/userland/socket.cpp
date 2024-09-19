@@ -79,7 +79,7 @@ namespace userland {
         sched::Process *process = cpu::get_current_thread()->process;
         auto *addr = (struct sockaddr_un*)addr_ptr;
 
-        vfs::Entry *entry = vfs::path_to_node(addr->sun_path, process->cwd);
+        vfs::Entry *entry = vfs::path_to_entry(addr->sun_path, process->cwd);
         if (entry->vnode != nullptr)
             return -EADDRINUSE;
         if (entry->parent == nullptr)
@@ -95,7 +95,7 @@ namespace userland {
         if (addr->sun_family != AF_LOCAL)
             return -EAFNOSUPPORT;
 
-        vfs::Entry *entry = vfs::path_to_node(addr->sun_path, process->cwd);
+        vfs::Entry *entry = vfs::path_to_entry(addr->sun_path, process->cwd);
         if (entry->vnode == nullptr)
             return -ENOENT;
         if (entry->vnode->type != vfs::NodeType::SOCKET)
