@@ -12,15 +12,15 @@
 #include <sys/mman.h>
 
 namespace mem::vmm {
-    static uptr hhdm;
+    uptr hhdm;
     static uptr hhdm_end;
     static uptr kernel_phy_base;
     static uptr kernel_virt_base;
-    static uptr heap_base;
-    static usize heap_size;
+    uptr heap_base;
+    usize heap_size;
 
-    static Pagemap kernel_pagemap;
-    static Pagemap *active_pagemap;
+    Pagemap kernel_pagemap;
+    Pagemap *active_pagemap;
     static MappedRange kernel_hhdm_range;
     static MappedRange kernel_heap_range;
 
@@ -102,18 +102,6 @@ namespace mem::vmm {
         kernel_pagemap.activate();
     }
 
-    uptr get_hhdm() { return hhdm; }
-    uptr get_heap_base() { return heap_base; }
-    uptr get_heap_size() { return heap_size; }
-
-    Pagemap* get_kernel_pagemap() {
-        return &kernel_pagemap;
-    }
-
-    Pagemap* get_active_pagemap() {
-        return active_pagemap;
-    }
-
     static u64* create_next_page_table(u64 *current_entry) {
         uptr new_page = pmm::alloc_pages(1);
         memset((void*)(new_page + hhdm), 0, 0x1000);
@@ -152,10 +140,8 @@ namespace mem::vmm {
 
     void Pagemap::map_kernel() {
         klib::LockGuard guard(this->lock);
-        auto kernel_pagemap = get_kernel_pagemap();
-        for (usize i = 256; i < 512; i++) {
-            pml4[i] = kernel_pagemap->pml4[i];
-        }
+        for (usize i = 256; i < 512; i++)
+            pml4[i] = kernel_pagemap.pml4[i];
     }
 
     void Pagemap::activate() {

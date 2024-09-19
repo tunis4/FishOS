@@ -118,7 +118,7 @@ extern "C" [[noreturn]] void _start() {
     mem::vmm::init(hhdm, memmap_req.response, kernel_addr_req.response);
     klib::printf("VMM: Initialized\n");
 
-    mem::bump::init(mem::vmm::get_heap_base(), mem::vmm::get_heap_size());
+    mem::bump::init(mem::vmm::heap_base, mem::vmm::heap_size);
     klib::printf("Allocator: Initialized\n");
 
     gfx::kernel_terminal();

@@ -158,7 +158,7 @@ namespace sched {
         };
 
         process->pagemap = new mem::vmm::Pagemap();
-        process->pagemap->pml4 = (u64*)(mem::pmm::alloc_pages(1) + mem::vmm::get_hhdm());
+        process->pagemap->pml4 = (u64*)(mem::pmm::alloc_pages(1) + mem::vmm::hhdm);
         memset(process->pagemap->pml4, 0, 0x1000);
         process->pagemap->map_kernel();
         process->pagemap->range_list_head.init();
@@ -194,7 +194,7 @@ namespace sched {
         thread->stack = process->mmap_anon_base;
         for (usize i = 0; i < user_stack_size / 0x1000; i++) {
             uptr page_phy = mem::pmm::alloc_pages(1);
-            memset((void*)(page_phy + mem::vmm::get_hhdm()), 0, 0x1000);
+            memset((void*)(page_phy + mem::vmm::hhdm), 0, 0x1000);
             process->pagemap->map_page(page_phy, process->mmap_anon_base, PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE);
             process->mmap_anon_base += 0x1000;
         }
@@ -309,7 +309,7 @@ namespace sched {
     void init() {
         sched_list_head.init();
         kernel_process = new Process();
-        kernel_process->pagemap = mem::vmm::get_kernel_pagemap();
+        kernel_process->pagemap = &mem::vmm::kernel_pagemap;
 
         idle_thread = new_kernel_thread([] {
             while (true)

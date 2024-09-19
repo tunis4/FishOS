@@ -52,7 +52,7 @@ namespace cpu {
         reload_gdt();
         interrupts::load_idt();
 
-        mem::vmm::get_kernel_pagemap()->activate();
+        mem::vmm::kernel_pagemap.activate();
 
         auto cpu = (CPU*)info->extra_argument;
         cpu->lapic_id = info->lapic_id;
@@ -60,10 +60,10 @@ namespace cpu {
         load_tss(&cpu->tss);
 
         uptr int_stack_phy = mem::pmm::alloc_pages(stack_size / 0x1000);
-        cpu->tss.rsp0 = int_stack_phy + stack_size + mem::vmm::get_hhdm();
+        cpu->tss.rsp0 = int_stack_phy + stack_size + mem::vmm::hhdm;
 
         uptr sched_stack_phy = mem::pmm::alloc_pages(stack_size / 0x1000);
-        cpu->tss.ist1 = sched_stack_phy + stack_size + mem::vmm::get_hhdm();
+        cpu->tss.ist1 = sched_stack_phy + stack_size + mem::vmm::hhdm;
 
         // hardcode PAT
         // 0: WB  1: WT  2: UC-  3: UC  4: WB  5: WT  6: WC  7: WP
