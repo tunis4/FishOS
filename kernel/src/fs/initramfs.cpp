@@ -29,7 +29,7 @@ namespace initramfs {
             // else klib::printf("%ld B\n", size);
 
             if (klib::strcmp(current->name, "./") != 0) {
-                auto *entry = vfs::path_to_node(current->name, dir);
+                auto *entry = vfs::path_to_entry(current->name, dir);
                 ASSERT(entry->vnode == nullptr);
 
                 switch (current->typeflag) {

@@ -88,7 +88,7 @@ namespace vfs {
         return entry;
     }
 
-    Entry* path_to_node(const char *path, Entry *starting_point, bool follow_last_symlink) {
+    Entry* path_to_entry(const char *path, Entry *starting_point, bool follow_last_symlink) {
         usize path_len = klib::strlen(path);
         if (path_len == 0) return null_entry;
         
@@ -130,7 +130,7 @@ namespace vfs {
                 if (ret < 0 || ret > 127)
                     return null_entry;
                 klib::strcpy(new_path + ret, s);
-                return path_to_node(new_path, current_entry, follow_last_symlink);
+                return path_to_entry(new_path, current_entry, follow_last_symlink);
             }
 
             if (last)
@@ -213,7 +213,7 @@ namespace vfs {
         Entry *starting_point = nullptr;
         if (int err = get_starting_point(&starting_point, dirfd, path); err < 0)
             return err;
-        Entry *entry = path_to_node(path, starting_point);
+        Entry *entry = path_to_entry(path, starting_point);
 
         if (entry->vnode == nullptr) {
             if (!(flags & O_CREAT))
@@ -262,7 +262,7 @@ namespace vfs {
         Entry *starting_point = nullptr;
         if (int err = get_starting_point(&starting_point, dirfd, path); err < 0)
             return err;
-        Entry *entry = path_to_node(path, starting_point);
+        Entry *entry = path_to_entry(path, starting_point);
         if (entry->vnode != nullptr)
             return -EEXIST;
         if (entry->parent == nullptr)
@@ -368,7 +368,7 @@ namespace vfs {
         Entry *starting_point = nullptr;
         if (path[0] != '/') // path is relative
             starting_point = process->cwd;
-        Entry *entry = path_to_node(path, starting_point);
+        Entry *entry = path_to_entry(path, starting_point);
         if (entry->vnode == nullptr)
             return -ENOENT;
         if (entry->vnode->type != NodeType::DIRECTORY)
@@ -396,7 +396,7 @@ namespace vfs {
         Entry *starting_point = nullptr;
         if (int err = get_starting_point(&starting_point, dirfd, path); err < 0)
             return err;
-        Entry *entry = path_to_node(path, starting_point);
+        Entry *entry = path_to_entry(path, starting_point);
         if (entry->vnode == nullptr)
             return -ENOENT;
         if (entry->vnode->type == NodeType::DIRECTORY && !(flags & AT_REMOVEDIR))
@@ -494,7 +494,7 @@ namespace vfs {
             Entry *starting_point = nullptr;
             if (int err = get_starting_point(&starting_point, fd, path); err < 0)
                 return err;
-            Entry *result = path_to_node(path, starting_point, (flags & AT_SYMLINK_NOFOLLOW) == 0);
+            Entry *result = path_to_entry(path, starting_point, (flags & AT_SYMLINK_NOFOLLOW) == 0);
             if (result->vnode == nullptr)
                 return -ENOENT;
             entry = result;
@@ -537,7 +537,7 @@ namespace vfs {
         if (int err = get_starting_point(&old_starting_point, old_dirfd, old_path); err < 0)
             return err;
 
-        Entry *old_entry = path_to_node(old_path, old_starting_point);
+        Entry *old_entry = path_to_entry(old_path, old_starting_point);
         if (old_entry->vnode == nullptr)
             return -ENOENT;
 
@@ -545,7 +545,7 @@ namespace vfs {
         if (int err = get_starting_point(&new_starting_point, new_dirfd, new_path); err < 0)
             return err;
 
-        Entry *new_entry = path_to_node(new_path, new_starting_point);
+        Entry *new_entry = path_to_entry(new_path, new_starting_point);
         if (new_entry->vnode == nullptr) {
             return -ENOSYS;
             // if (!(flags & O_CREAT))
@@ -634,7 +634,7 @@ namespace vfs {
         Entry *starting_point = nullptr;
         if (int err = get_starting_point(&starting_point, dirfd, path); err < 0)
             return err;
-        Entry *entry = path_to_node(path, starting_point, false);
+        Entry *entry = path_to_entry(path, starting_point, false);
         if (entry->vnode == nullptr)
             return -ENOENT;
         return entry->vnode->read(nullptr, buf, count, 0);
@@ -658,7 +658,7 @@ namespace vfs {
         if (int err = get_starting_point(&old_starting_point, old_dirfd, old_path); err < 0)
             return err;
 
-        Entry *old_entry = path_to_node(old_path, old_starting_point);
+        Entry *old_entry = path_to_entry(old_path, old_starting_point);
         if (old_entry->vnode == nullptr)
             return -ENOENT;
 
@@ -666,7 +666,7 @@ namespace vfs {
         if (int err = get_starting_point(&new_starting_point, new_dirfd, new_path); err < 0)
             return err;
 
-        Entry *new_entry = path_to_node(new_path, new_starting_point);
+        Entry *new_entry = path_to_entry(new_path, new_starting_point);
         if (new_entry->vnode != nullptr)
             return -EEXIST;
         
