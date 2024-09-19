@@ -16,7 +16,7 @@ namespace acpi {
     }
 
     void parse_rsdp(uptr rsdp_addr) {
-        u64 hhdm = mem::vmm::get_hhdm();
+        u64 hhdm = mem::vmm::hhdm;
         auto rsdp1 = (RSDP1*)rsdp_addr;
         if (memcmp(rsdp1->signature, "RSD PTR ", 8))
             panic("RSDP signature incorrect");
@@ -69,7 +69,7 @@ namespace acpi {
 
     void parse_madt(MADT *madt) {
         using namespace cpu::interrupts;
-        uptr hhdm = mem::vmm::get_hhdm();
+        uptr hhdm = mem::vmm::hhdm;
         klib::printf("ACPI: Parsing MADT, LAPIC phy addr: %#X (might be overridden)\n", madt->lapic_addr);
 
         for (auto *entry = (MADT::Entry*)((uptr)madt + sizeof(MADT)); (uptr)entry < (uptr)madt + madt->size; entry = (MADT::Entry*)((uptr)entry + entry->size)) {
@@ -88,7 +88,7 @@ namespace acpi {
             } else if (entry->type == MADT::IOAPIC) {
                 auto ioapic_entry = (MADT::EntryIOAPIC*)entry;
                 klib::printf("ACPI: IOAPIC | ID: %u, Phy Addr: %#X, GSI base: %u\n", ioapic_entry->ioapic_id, ioapic_entry->ioapic_addr, ioapic_entry->gsi_base);
-                mem::vmm::get_kernel_pagemap()->map_page(ioapic_entry->ioapic_addr, ioapic_entry->ioapic_addr + hhdm, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_CACHE_DISABLE);
+                mem::vmm::kernel_pagemap.map_page(ioapic_entry->ioapic_addr, ioapic_entry->ioapic_addr + hhdm, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_CACHE_DISABLE);
                 IOAPIC ioapic(ioapic_entry->ioapic_id, ioapic_entry->ioapic_addr, ioapic_entry->gsi_base);
                 ioapics().push_back(ioapic);
             } else if (entry->type == MADT::IOAPIC_IRQ_SOURCE_OVERRIDE) {

@@ -44,7 +44,7 @@ namespace elf {
                     uptr page_virt = load_base + ph.virt_addr + (i * 0x1000);
                     // klib::printf("mapping %#lX to %#lX\n", page_phy, page_virt);
                     pagemap->map_page(page_phy, page_virt, page_flags);
-                    uptr dst = page_phy + mem::vmm::get_hhdm();
+                    uptr dst = page_phy + mem::vmm::hhdm;
                     memset((void*)dst, 0, 0x1000);
                     if (i < file_page_count) {
                         uptr offset = ph.offset + (i * 0x1000);

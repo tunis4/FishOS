@@ -31,12 +31,12 @@ namespace dev {
         MemDevNode() {}
 
         virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
-            memcpy(buf, (void*)(mem::vmm::get_hhdm() + offset), count);
+            memcpy(buf, (void*)(mem::vmm::hhdm + offset), count);
             return count;
         }
 
         virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) {
-            memcpy((void*)(mem::vmm::get_hhdm() + offset), buf, count);
+            memcpy((void*)(mem::vmm::hhdm + offset), buf, count);
             return count;
         }
     };

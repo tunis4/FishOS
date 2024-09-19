@@ -125,14 +125,13 @@ namespace cpu::interrupts {
 
     static void page_fault_handler(u64 vec, InterruptState *state) {
         u64 cr2 = cpu::read_cr2();
-        mem::vmm::Pagemap *pagemap = mem::vmm::get_active_pagemap();
         // if ((state->cs & 3) == 3) {
         //     // klib::printf("gs: %#lX, kernel gs: %#lX\n", cpu::read_gs_base(), cpu::read_kernel_gs_base());
         //     sched::Task *task = cpu::get_current_thread();
         //     pagemap = task->pagemap;
         // } else
         //     pagemap = mem::vmm::get_kernel_pagemap();
-        if (pagemap->handle_page_fault(cr2))
+        if (mem::vmm::active_pagemap->handle_page_fault(cr2))
             exception_handler(vec, state);
         // else
         //     klib::printf("Demand paged %#lX\n", cr2);

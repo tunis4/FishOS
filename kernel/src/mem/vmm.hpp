@@ -62,11 +62,11 @@ namespace mem::vmm {
 
     void init(uptr hhdm_base, limine_memmap_response *memmap_res, limine_kernel_address_response *kernel_addr_res);
 
-    uptr get_hhdm();
-    uptr get_heap_base();
-    uptr get_heap_size();
-    Pagemap* get_kernel_pagemap();
-    Pagemap* get_active_pagemap();
+    extern uptr hhdm;
+    extern uptr heap_base;
+    extern usize heap_size;
+    extern Pagemap kernel_pagemap;
+    extern Pagemap *active_pagemap;
 
     u64 mmap_prot_to_page_flags(int prot);
 
