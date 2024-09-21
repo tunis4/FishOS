@@ -14,10 +14,10 @@ index 00000000..da7a438c
 +
 +#endif
 diff --git mlibc-clean/meson.build mlibc-workdir/meson.build
-index 471604e0..388fd9c5 100644
+index 42bee60d..fdb55a5f 100644
 --- mlibc-clean/meson.build
 +++ mlibc-workdir/meson.build
-@@ -248,6 +248,10 @@ elif host_machine.system() == 'dripos'
+@@ -264,6 +264,10 @@ elif host_machine.system() == 'dripos'
  	rtld_include_dirs += include_directories('sysdeps/dripos/include')
  	libc_include_dirs += include_directories('sysdeps/dripos/include')
  	subdir('sysdeps/dripos')
@@ -44,19 +44,6 @@ index 3474615e..7e2d8c01 100644
  }
  
  char **backtrace_symbols(void *const *, int) {
-diff --git mlibc-clean/options/internal/generic/debug.cpp mlibc-workdir/options/internal/generic/debug.cpp
-index 19427c8a..214e9578 100644
---- mlibc-clean/options/internal/generic/debug.cpp
-+++ mlibc-workdir/options/internal/generic/debug.cpp
-@@ -9,7 +9,7 @@ frg::stack_buffer_logger<InfoSink, 512> infoLogger;
- frg::stack_buffer_logger<PanicSink, 512> panicLogger;
- 
- void InfoSink::operator() (const char *message) {
--	sys_libc_log(message);
-+	// sys_libc_log(message);
- }
- 
- void PanicSink::operator() (const char *message) {
 diff --git mlibc-clean/options/internal/generic/ensure.cpp mlibc-workdir/options/internal/generic/ensure.cpp
 index 57c953a2..d645d8c9 100644
 --- mlibc-clean/options/internal/generic/ensure.cpp
@@ -73,8 +60,23 @@ index 57c953a2..d645d8c9 100644
 +	// 		<< "__ensure(" << assertion << ") failed" << frg::endlog;
  }
  
+diff --git mlibc-clean/options/posix/generic/posix_locale.cpp mlibc-workdir/options/posix/generic/posix_locale.cpp
+index bd8710a8..991082d4 100644
+--- mlibc-clean/options/posix/generic/posix_locale.cpp
++++ mlibc-workdir/options/posix/generic/posix_locale.cpp
+@@ -4,8 +4,8 @@
+ 
+ namespace {
+ 
+-bool newlocale_seen = false;
+-bool uselocale_seen = false;
++bool newlocale_seen = true;
++bool uselocale_seen = true;
+ 
+ }
+ 
 diff --git mlibc-clean/options/rtld/generic/linker.cpp mlibc-workdir/options/rtld/generic/linker.cpp
-index b5f42afc..6f85083e 100644
+index dfe2b61a..aabfb0e2 100644
 --- mlibc-clean/options/rtld/generic/linker.cpp
 +++ mlibc-workdir/options/rtld/generic/linker.cpp
 @@ -27,7 +27,7 @@ uintptr_t libraryBase = 0x41000000;
@@ -88,14 +90,18 @@ index b5f42afc..6f85083e 100644
  constexpr bool eagerBinding = true;
 diff --git mlibc-clean/sysdeps/fishos/generic/entry.cpp mlibc-workdir/sysdeps/fishos/generic/entry.cpp
 new file mode 100644
-index 00000000..8f58d7cf
+index 00000000..259f601b
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/generic/entry.cpp
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,90 @@
++#include <bits/ensure.h>
++#include <bits/posix/posix_signal.h>
++#include <fishos/syscall.h>
++#include <mlibc/all-sysdeps.hpp>
++#include <mlibc/debug.hpp>
++#include <mlibc/elf/startup.h>
 +#include <stdint.h>
 +#include <stdlib.h>
-+#include <bits/ensure.h>
-+#include <mlibc/elf/startup.h>
 +
 +// defined by the POSIX library
 +void __mlibc_initLocale();
@@ -121,8 +127,60 @@ index 00000000..8f58d7cf
 +			__mlibc_stack_data.envp);
 +}
 +
++namespace mlibc {
++	int sys_sigentry(void *entry) {
++		int64_t ret = syscall(SYS_sigentry, (uintptr_t)entry);
++		if (ret < 0)
++			return -ret;
++		return 0;
++	}
++
++	[[noreturn]] int sys_sigreturn(ucontext_t *context, uint64_t saved_signal_mask) {
++		syscall(SYS_sigreturn, (uintptr_t)context, saved_signal_mask);
++		__builtin_unreachable();
++	}
++}
++
++static void do_stacktrace(ucontext_t *ctx) {
++	size_t *base_ptr = (size_t *)ctx->uc_mcontext.gregs[REG_RBP];
++
++	mlibc::infoLogger() << "Stacktrace:" << frg::endlog;
++	mlibc::infoLogger() << "  [" << (void *)ctx->uc_mcontext.gregs[REG_RIP] << "]" << frg::endlog;
++	for (;;) {
++		size_t old_bp = base_ptr[0];
++		size_t ret_addr = base_ptr[1];
++		if (!ret_addr)
++			break;
++		mlibc::infoLogger() << "  [" << (void *)ret_addr << "]" << frg::endlog;
++		if (!old_bp)
++			break;
++		base_ptr = (size_t *)old_bp;
++	}
++}
++
++[[noreturn]] static void __mlibc_sigentry(int which, siginfo_t *siginfo, uintptr_t handler, uint64_t saved_signal_mask, ucontext_t *ret_context) {
++	uintptr_t is_sigaction_mask = (uintptr_t)1 << 63;
++	bool is_sigaction = handler & is_sigaction_mask;
++	handler &= ~is_sigaction_mask;
++	if (handler == (uintptr_t)SIG_DFL) {
++		mlibc::infoLogger() << "mlibc: Unhandled signal " << which << frg::endlog;
++		do_stacktrace(ret_context);
++		mlibc::sys_exit(128 + which);
++	} else if (handler == (uintptr_t)SIG_IGN) {
++		/* epsilon */
++	} else {
++		if (is_sigaction)
++			((void (*)(int, siginfo_t *, void *))handler)(which, siginfo, ret_context);
++		else
++			((void (*)(int))handler)(which);
++	}
++
++	mlibc::sys_sigreturn(ret_context, saved_signal_mask);
++}
++
 +extern "C" void __mlibc_entry(uintptr_t *entry_stack, int (*main_fn)(int argc, char *argv[], char *env[])) {
 +	__dlapi_enter(entry_stack);
++	mlibc::sys_sigentry((void *)__mlibc_sigentry);
 +	auto result = main_fn(__mlibc_stack_data.argc, __mlibc_stack_data.argv, environ);
 +	exit(result);
 +}
@@ -393,10 +451,10 @@ index 00000000..f5508a1e
 +}
 diff --git mlibc-clean/sysdeps/fishos/generic/generic.cpp mlibc-workdir/sysdeps/fishos/generic/generic.cpp
 new file mode 100644
-index 00000000..d0e0e6ed
+index 00000000..7da9061d
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/generic/generic.cpp
-@@ -0,0 +1,309 @@
+@@ -0,0 +1,324 @@
 +#include <fishos/syscall.h>
 +#include <stddef.h>
 +#include <bits/ensure.h>
@@ -676,14 +734,29 @@ index 00000000..d0e0e6ed
 +	return 0;
 +}
 +
-+int sys_sigprocmask(int, const sigset_t *__restrict, sigset_t *__restrict) {
-+	// mlibc::infoLogger() << "mlibc: sys_sigprocmask() is a stub" << frg::endlog;
++int sys_sigprocmask(int how, const sigset_t *__restrict set, sigset_t *__restrict retrieve) {
++	int64_t ret = syscall(SYS_sigmask, how, (uintptr_t)set, (uintptr_t)retrieve);
++	if (ret < 0)
++		return -ret;
 +	return 0;
 +}
 +
-+int sys_sigaction(int, const struct sigaction *, struct sigaction *) {
-+	// mlibc::infoLogger() << "mlibc: sys_sigaction() is a stub" << frg::endlog;
++int sys_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact) {
++	int64_t ret = syscall(SYS_sigaction, signum, (uintptr_t)act, (uintptr_t)oldact);
++	if (ret < 0)
++		return -ret;
 +	return 0;
++}
++
++int sys_kill(pid_t pid, int signal) {
++	int64_t ret = syscall(SYS_kill, pid, signal);
++	if (ret < 0)
++		return -ret;
++	return 0;
++}
++
++int sys_tgkill(int, int tid, int number) {
++	return sys_kill(tid, number);
 +}
 +
 +int sys_gethostname(char *buffer, size_t bufsize) {
@@ -1571,10 +1644,10 @@ index 00000000..bdbba9bf
 +#endif /* __ASM_GENERIC_IOCTLS_H */
 diff --git mlibc-clean/sysdeps/fishos/include/fishos/syscall.h mlibc-workdir/sysdeps/fishos/include/fishos/syscall.h
 new file mode 100755
-index 00000000..44b51114
+index 00000000..ec4f4e8d
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/include/fishos/syscall.h
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,122 @@
 +#ifndef SYSCALL_H
 +#define SYSCALL_H
 +
@@ -1626,6 +1699,11 @@ index 00000000..44b51114
 +#define SYS_thread_exit   43
 +#define SYS_futex_wait    44
 +#define SYS_futex_wake    45
++#define SYS_sigentry      46
++#define SYS_sigreturn     47
++#define SYS_sigmask       48
++#define SYS_sigaction     49
++#define SYS_kill          50
 +
 +#define SYSCALL_INLINE [[gnu::always_inline]] inline
 +

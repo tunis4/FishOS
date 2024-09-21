@@ -94,6 +94,7 @@ source_files = [
   'src/mem/vmm.cpp',
 
   'src/sched/sched.cpp',
+  'src/sched/context.cpp',
   'src/sched/event.cpp',
   'src/sched/time.cpp',
 
@@ -105,6 +106,7 @@ source_files = [
   'src/userland/pipe.cpp',
   'src/userland/socket.cpp',
   'src/userland/futex.cpp',
+  'src/userland/signal.cpp',
 ]
 
 fonts = [

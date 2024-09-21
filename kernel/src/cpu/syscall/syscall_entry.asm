@@ -1,11 +1,6 @@
 section .text
 
-SYSCALL_TABLE_SIZE equ 46
-SYSCALL_FORK equ 13
-SYSCALL_EXECVE equ 14
-ENOSYS equ 1051
-
-extern __syscall_table
+extern __syscall_handler
 global __syscall_entry
 __syscall_entry:
     swapgs
@@ -40,32 +35,9 @@ __syscall_entry:
     mov es, eax
 
     xor rbp, rbp
+    mov rdi, rsp
 
-    mov rcx, r10 ; to retrieve function arguments properly
-    mov rax, [rsp + 16 * 8] ; retrieve the original value of rax
-    cmp rax, SYSCALL_TABLE_SIZE ; check if rax is a valid syscall table index
-    jae .out_of_bounds
-    
-    cmp rax, SYSCALL_FORK ; check if the syscall is fork
-    je .is_fork
-    cmp rax, SYSCALL_EXECVE ; check if the syscall is not execve
-    jne .is_not_execve
-.is_fork:
-    mov rcx, rdx ; |
-    mov rdx, rsi ; | shift arguments to the right for execve
-    mov rsi, rdi ; |
-    mov rdi, rsp ; fork and execve need to know the program state
-.is_not_execve:
-    sti
-    call [__syscall_table + rax * 8]
-    cli
-    jmp .end
-
-.out_of_bounds:
-    mov rax, -ENOSYS
-
-.end:
-    mov [rsp + 16 * 8], rax ; set the new value of rax
+    call __syscall_handler
 
     pop rax
     mov ds, eax

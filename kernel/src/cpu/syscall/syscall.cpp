@@ -7,10 +7,28 @@
 #include <userland/pipe.hpp>
 #include <userland/socket.hpp>
 #include <userland/futex.hpp>
+#include <userland/signal.hpp>
 
 namespace cpu::syscall {
-    extern "C" { void *__syscall_table[46]; }
-    
+    static void *__syscall_table[51];
+
+    extern "C" void __syscall_handler(SyscallState *state) {
+        cpu::toggle_interrupts(true);
+        if (state->rax == 13 || state->rax == 14) { // fork and execve
+            auto *syscall = (isize (*)(SyscallState *, usize, usize, usize, usize, usize))__syscall_table[state->rax];
+            state->rax = syscall(state, state->rdi, state->rsi, state->rdx, state->r10, state->r8);
+        } else {
+            auto *syscall = (isize (*)(usize, usize, usize, usize, usize))__syscall_table[state->rax];
+            state->rax = syscall(state->rdi, state->rsi, state->rdx, state->r10, state->r8);
+        }
+        cpu::toggle_interrupts(false);
+        auto *thread = cpu::get_current_thread();
+        if (!thread->exiting_signal && !thread->entering_signal && thread->has_pending_signals()) {
+            thread->entering_signal = true;
+            sched::reschedule_self(); // interrupts will be reenabled after sysret and the self irq will be immediately handled
+        }
+    }
+
     void init_syscall_table() {
         __syscall_table[0]  = (void*)&sched::syscall_exit;
         __syscall_table[1]  = (void*)&vfs::syscall_open;
@@ -58,5 +76,10 @@ namespace cpu::syscall {
         __syscall_table[43] = (void*)&sched::syscall_thread_exit;
         __syscall_table[44] = (void*)&userland::syscall_futex_wait;
         __syscall_table[45] = (void*)&userland::syscall_futex_wake;
+        __syscall_table[46] = (void*)&userland::syscall_sigentry;
+        __syscall_table[47] = (void*)&userland::syscall_sigreturn;
+        __syscall_table[48] = (void*)&userland::syscall_sigmask;
+        __syscall_table[49] = (void*)&userland::syscall_sigaction;
+        __syscall_table[50] = (void*)&userland::syscall_kill;
     }
 }

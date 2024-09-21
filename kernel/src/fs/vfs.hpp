@@ -169,7 +169,7 @@ namespace vfs {
     isize syscall_dup(int oldfd, int newfd, int flags);
     isize syscall_stat(int fd, const char *path, struct stat *statbuf, int flags);
     isize syscall_rename(int old_dirfd, const char *old_path, int new_dirfd, const char *new_path, int flags);
-    isize syscall_poll(struct pollfd *fds, nfds_t nfds, const klib::TimeSpec *timeout_ts, const sigset_t *sigmask);
+    isize syscall_poll(struct pollfd *fds, nfds_t nfds, const klib::TimeSpec *timeout_ts, const u64 *sigmask);
     isize syscall_readlink(int dirfd, const char *path, void *buf, usize count);
     isize syscall_ioctl(int fd, usize cmd, void *arg);
     isize syscall_link(int old_dirfd, const char *old_path, int new_dirfd, const char *new_path, int flags);
