@@ -53,13 +53,13 @@ namespace sched {
 #endif
         Timer timer(*duration);
         timer.arm();
-        timer.event.await();
-        ASSERT(timer.fired);
+        auto ret = timer.event.await();
         timer.disarm();
-        if (remaining) {
-            remaining->seconds = 0;
-            remaining->nanoseconds = 0;
-        }
+        if (remaining)
+            *remaining = timer.remaining;
+        if (ret == -EINTR)
+            return -EINTR;
+        ASSERT(timer.fired);
         return 0;
     }
 

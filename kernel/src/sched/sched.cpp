@@ -1,4 +1,5 @@
 #include <sched/sched.hpp>
+#include <sched/context.hpp>
 #include <sched/timer/apic_timer.hpp>
 #include <sched/timer/hpet.hpp>
 #include <mem/pmm.hpp>
@@ -93,6 +94,22 @@ namespace sched {
                 file_descriptors[i].close(this, i);
     }
 
+    Thread* Thread::get_from_tid(int tid) {
+        auto &thread_table = get_thread_table();
+        if (tid <= 0 || tid >= (int)thread_table.size())
+            return nullptr;
+        return thread_table[tid];
+    }
+
+    void Thread::send_signal(int signal) {
+        pending_signals |= 1 << signal;
+        enqueue_thread(this, true);
+    }
+
+    bool Thread::has_pending_signals() {
+        return pending_signals & ~signal_mask;
+    }
+
     Thread* new_kernel_thread(void (*func)(), bool enqueue) {
         Thread *thread = new Thread(kernel_process, allocate_tid());
 
@@ -118,28 +135,28 @@ namespace sched {
         return thread;
     }
 
-    static void init_user_thread(Thread *thread, uptr entry, uptr stack) {
-        if (!thread->kernel_stack) {
-            void *kernel_stack = klib::malloc(kernel_stack_size);
-            memset(kernel_stack, 0, kernel_stack_size);
-            thread->kernel_stack = (uptr)kernel_stack + kernel_stack_size;
-            thread->saved_kernel_stack = thread->kernel_stack;
+    void Thread::init_user(uptr entry, uptr new_stack) {
+        if (!kernel_stack) {
+            void *new_kernel_stack = klib::malloc(kernel_stack_size);
+            memset(new_kernel_stack, 0, kernel_stack_size);
+            kernel_stack = (uptr)new_kernel_stack + kernel_stack_size;
+            saved_kernel_stack = kernel_stack;
         }
 
-        thread->running_on = 0;
-        thread->gpr_state = cpu::InterruptState();
-        thread->gpr_state.cs = u64(cpu::GDTSegment::USER_CODE_64) | 3;
-        thread->gpr_state.ds = u64(cpu::GDTSegment::USER_DATA_64) | 3;
-        thread->gpr_state.es = u64(cpu::GDTSegment::USER_DATA_64) | 3;
-        thread->gpr_state.ss = u64(cpu::GDTSegment::USER_DATA_64) | 3;
-        thread->gpr_state.rflags = 0x202;
-        thread->gpr_state.rip = entry;
-        thread->gs_base = (uptr)cpu::get_current_cpu();
-        thread->fs_base = 0;
+        running_on = 0;
+        gpr_state = cpu::InterruptState();
+        gpr_state.cs = u64(cpu::GDTSegment::USER_CODE_64) | 3;
+        gpr_state.ds = u64(cpu::GDTSegment::USER_DATA_64) | 3;
+        gpr_state.es = u64(cpu::GDTSegment::USER_DATA_64) | 3;
+        gpr_state.ss = u64(cpu::GDTSegment::USER_DATA_64) | 3;
+        gpr_state.rflags = 0x202;
+        gpr_state.rip = entry;
+        gs_base = (uptr)cpu::get_current_cpu();
+        fs_base = 0;
 
-        thread->stack = stack;
-        thread->gpr_state.rsp = thread->stack;
-        thread->saved_user_stack = thread->stack;
+        stack = new_stack;
+        gpr_state.rsp = stack;
+        saved_user_stack = stack;
     }
 
     static isize user_exec(Process *process, vfs::VNode *elf_file, char **argv, char **envp, int argv_len, int envp_len) {
@@ -201,8 +218,7 @@ namespace sched {
         thread->stack += user_stack_size;
 
         uptr entry = ld_path ? ld_auxv.at_entry : auxv.at_entry;
-
-        init_user_thread(thread, entry, thread->stack);
+        thread->init_user(entry, thread->stack);
 
         cpu::write_fs_base(thread->fs_base);
 
@@ -268,6 +284,8 @@ namespace sched {
                 file_descriptor.close(process, i);
         }
 
+        memset(process->signal_actions, 0, sizeof(Process::signal_actions));
+
         return 0;
     }
 
@@ -329,9 +347,10 @@ namespace sched {
         thread->state = Thread::BLOCKED;
     }
 
-    void enqueue_thread(Thread *thread) {
+    void enqueue_thread(Thread *thread, bool by_signal) {
         klib::InterruptLock guard;
         if (thread->state == Thread::BLOCKED) {
+            thread->enqueued_by_signal = by_signal;
             sched_list_head.add_before(&thread->sched_link);
             thread->state = Thread::READY;
         }
@@ -349,18 +368,20 @@ namespace sched {
 
     void yield() {
         klib::InterruptLock guard;
-        auto *cpu = cpu::get_current_cpu();
-
         timer::apic_timer::stop();
 
-        Thread *thread = cpu->running_thread;
+        Thread *thread = cpu::get_current_thread();
         thread->yield_await.lock();
 
-        cpu::interrupts::LAPIC::send_ipi(cpu->lapic_id, timer::apic_timer::vector);
+        reschedule_self();
 
         cpu::toggle_interrupts(true);
         thread->yield_await.lock();
         thread->yield_await.unlock();
+    }
+
+    void reschedule_self() {
+        cpu::interrupts::LAPIC::send_ipi(cpu::get_current_cpu()->lapic_id, timer::apic_timer::vector);
     }
 
     usize scheduler_isr(u64 vec, cpu::InterruptState *gpr_state) {
@@ -401,6 +422,12 @@ namespace sched {
         cpu::write_fs_base(current_thread->fs_base);
 
         current_thread->process->pagemap->activate();
+        if ((current_thread->gpr_state.cs & 3) == 3) {
+            if (current_thread->entering_signal)
+                userland::dispatch_pending_signal(current_thread);
+            else if (current_thread->exiting_signal)
+                userland::return_from_signal(current_thread);
+        }
         current_thread->state = Thread::RUNNING;
 
         // load the new thread's registers
@@ -460,6 +487,8 @@ namespace sched {
         }
         new_process->num_file_descriptors = old_process->num_file_descriptors;
         new_process->first_free_fdnum = old_process->first_free_fdnum;
+
+        memcpy(new_process->signal_actions, old_process->signal_actions, sizeof(Process::signal_actions));
 
         new_process->parent = old_process;
         old_process->children_list.add_before(&new_process->sibling_link);
@@ -544,7 +573,7 @@ namespace sched {
 
         Process *current_process = cpu::get_current_thread()->process;
         Process *target_child = nullptr;
-        usize which = 0;
+        isize which = 0;
 
         klib::Vector<Process*> target_children;
         klib::Vector<Event*> events;
@@ -582,7 +611,12 @@ namespace sched {
             return 0;
         }
 
-        which = Event::await(events);
+        if (options & WNOHANG)
+            return 0;
+
+        if (Event::await(events) == -EINTR)
+            return -EINTR;
+
         target_child = target_children[which];
     
     found_target:
@@ -615,7 +649,7 @@ namespace sched {
 #endif
         Process *process = cpu::get_current_thread()->process;
         Thread *new_thread = new Thread(process, allocate_tid());
-        init_user_thread(new_thread, (uptr)entry, (uptr)stack);
+        new_thread->init_user((uptr)entry, (uptr)stack);
         enqueue_thread(new_thread);
         return new_thread->tid;
     }

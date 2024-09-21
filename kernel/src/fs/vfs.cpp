@@ -559,13 +559,22 @@ namespace vfs {
         }
     }
 
-    isize syscall_poll(struct pollfd *fds, nfds_t nfds, const klib::TimeSpec *timeout, const sigset_t *sigmask) {
+    isize syscall_poll(struct pollfd *fds, nfds_t nfds, const klib::TimeSpec *timeout, const u64 *sigmask) {
 #if SYSCALL_TRACE
         klib::printf("poll(%#lX, %lu, %#lX, %#lX)\n", (uptr)fds, nfds, (uptr)timeout, (uptr)sigmask);
 #endif
         isize ret = 0;
         if (nfds > 1024)
             return -EINVAL;
+
+        auto *thread = cpu::get_current_thread();
+        u64 saved_signal_mask = thread->signal_mask;
+        if (sigmask)
+            thread->signal_mask = *sigmask;
+        defer {
+            if (sigmask)
+                thread->signal_mask = saved_signal_mask;
+        };
 
         usize max_events = nfds;
         if (timeout && !timeout->is_zero())
@@ -619,11 +628,10 @@ namespace vfs {
 
             if (ret != 0)
                 return ret;
-
             if (!block)
                 return 0;
-
-            sched::Event::await({events, allocated_events});
+            if (sched::Event::await({events, allocated_events}) == -EINTR)
+                return -EINTR;
         }
     }
 

@@ -32,7 +32,8 @@ namespace userland {
                 return 0;
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
-            pipe_event.await();
+            if (pipe_event.await() == -EINTR)
+                return -EINTR;
         }
         count = ring_buffer.read((u8*)buf, count);
         pipe_event.trigger();
@@ -47,7 +48,8 @@ namespace userland {
                 break;
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
-            pipe_event.await();
+            if (pipe_event.await() == -EINTR)
+                return -EINTR;
         }
         count = ring_buffer.write((const u8*)buf, count);
         pipe_event.trigger();

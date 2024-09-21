@@ -7,6 +7,7 @@
 #include <klib/list.hpp>
 #include <fs/vfs.hpp>
 #include <sched/event.hpp>
+#include <userland/signal.hpp>
 #include <cpu/syscall/syscall.hpp>
 #include <sys/utsname.h>
 
@@ -32,6 +33,14 @@ namespace sched {
         klib::Vector<Event::Listener*> listeners;
         usize which_event;
 
+        uptr signal_entry;
+        u64 signal_mask;
+        u64 pending_signals;
+        bool enqueued_by_signal;
+        bool entering_signal, exiting_signal;
+        ucontext_t *signal_ucontext; // only valid when exiting signal
+        u64 saved_signal_mask; // only valid when exiting signal
+
         enum State {
             READY,
             RUNNING,
@@ -46,6 +55,12 @@ namespace sched {
 
         Thread(const Thread &other) = delete;
         Thread(Thread &&other) = delete;
+
+        static Thread* get_from_tid(int tid);
+
+        void init_user(uptr entry, uptr new_stack);
+        void send_signal(int signal);
+        bool has_pending_signals();
     };
 
     struct Process {
@@ -69,6 +84,8 @@ namespace sched {
         bool is_zombie = false;
         int exit_status;
 
+        userland::SignalAction signal_actions[64];
+
         Process();
         ~Process();
 
@@ -86,12 +103,13 @@ namespace sched {
     Process* new_user_process(vfs::VNode *elf_file, bool enqueue);
 
     void dequeue_thread(Thread *thread);
-    void enqueue_thread(Thread *thread);
+    void enqueue_thread(Thread *thread, bool by_signal = false);
     [[noreturn]] void dequeue_and_die();
     void yield();
-    
+
+    void reschedule_self();
     usize scheduler_isr(u64 vec, cpu::InterruptState *gpr_state);
-    
+
     [[noreturn]] void syscall_exit(int status);
     isize syscall_fork(cpu::syscall::SyscallState *state);
     isize syscall_execve(cpu::syscall::SyscallState *state, const char *path, const char **argv, const char **envp);

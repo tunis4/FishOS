@@ -34,7 +34,8 @@ namespace dev {
 
     isize ConsoleDevNode::read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
         while (input_buffer.is_empty())
-            event->await();
+            if (event->await() == -EINTR)
+                return -EINTR;
         return input_buffer.read((char*)buf, count);
     }
 

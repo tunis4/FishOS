@@ -38,7 +38,8 @@ namespace userland {
         while (ring_buffer->is_empty()) {
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
-            socket_event.await();
+            if (socket_event.await() == -EINTR)
+                return -EINTR;
         }
 
         count = ring_buffer->read((u8*)buf, count);
@@ -53,7 +54,8 @@ namespace userland {
         while (peer->ring_buffer->is_full()) {
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
-            socket_event.await();
+            if (socket_event.await() == -EINTR)
+                return -EINTR;
         }
 
         count = peer->ring_buffer->write((const u8*)buf, count);
@@ -110,7 +112,8 @@ namespace userland {
         }
         target->socket_event.trigger();
         ring_buffer = new RingBuffer();
-        socket_event.await();
+        if (socket_event.await() == -EINTR)
+            return -EINTR;
         return 0;
     }
 
@@ -126,7 +129,8 @@ namespace userland {
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
             guard.unlock();
-            socket_event.await();
+            if (socket_event.await() == -EINTR)
+                return -EINTR;
             guard.lock();
         }
 

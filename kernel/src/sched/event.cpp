@@ -8,6 +8,9 @@ namespace sched {
         klib::InterruptLock guard;
         auto *thread = cpu::get_current_thread();
 
+        if (thread->pending_signals & ~thread->signal_mask)
+            return -EINTR;
+
         for (usize i = 0; i < events.size; i++) {
             auto *event = events[i];
             if (event && event->pending > 0) {
@@ -31,6 +34,8 @@ namespace sched {
 
         dequeue_thread(thread);
         yield();
+        if (thread->enqueued_by_signal)
+            return -EINTR;
 
         for (auto *listener : thread->listeners) {
             if (!listener->listener_link.is_invalid())
@@ -53,6 +58,7 @@ namespace sched {
         for (klib::ListHead *current = listener_list_head.next; current != &listener_list_head;) {
             auto *listener = LIST_ENTRY(current, Event::Listener, listener_link);
             listener->thread->which_event = listener->which;
+            listener->thread->enqueued_by_signal = false,
             enqueue_thread(listener->thread);
             current = current->next;
             listener->listener_link.remove();
