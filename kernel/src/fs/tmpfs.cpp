@@ -35,10 +35,10 @@ namespace tmpfs {
         delete (NodeData*)(entry->vnode->fs_data);
     }
 
-    void Filesystem::stat(vfs::Entry *entry, struct stat *statbuf) {
-        NodeData *node_data = (NodeData*)entry->vnode->fs_data;
+    void Filesystem::stat(vfs::VNode *vnode, struct stat *statbuf) {
+        NodeData *node_data = (NodeData*)vnode->fs_data;
         statbuf->st_ino = node_data->inode_num;
-        if (entry->vnode->type == vfs::NodeType::DIRECTORY)
+        if (vnode->type == vfs::NodeType::DIRECTORY)
             statbuf->st_size = sizeof(vfs::Entry);
         else
             statbuf->st_size = node_data->size;
