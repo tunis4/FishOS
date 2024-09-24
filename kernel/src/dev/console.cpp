@@ -1,4 +1,5 @@
 #include <dev/console.hpp>
+#include <sched/sched.hpp>
 
 namespace dev {
     ConsoleDevNode::ConsoleDevNode() {
@@ -33,13 +34,23 @@ namespace dev {
     }
 
     isize ConsoleDevNode::read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
+        auto *process_group = cpu::get_current_thread()->process->process_group_leader;
+        if (process_group != foreground_process_group)
+            process_group->send_process_group_signal(SIGTTIN);
+
         while (input_buffer.is_empty())
             if (event->await() == -EINTR)
                 return -EINTR;
+
         return input_buffer.read((char*)buf, count);
     }
 
     isize ConsoleDevNode::write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) {
+        auto *process_group = cpu::get_current_thread()->process->process_group_leader;
+        if (termios.c_lflag & TOSTOP)
+            if (process_group != foreground_process_group)
+                process_group->send_process_group_signal(SIGTTOU);
+
         return klib::printf("%.*s", (int)count, (char*)buf);
     }
 
@@ -67,6 +78,18 @@ namespace dev {
         case TCSETSW:
         case TCSETSF: {
             memcpy(&termios, arg, sizeof(termios));
+        } return 0;
+        case TIOCGPGRP: {
+            *(int*)arg = foreground_process_group->pid;
+        } return 0;
+        case TIOCSPGRP: {
+            auto *thread = sched::Thread::get_from_tid(*(int*)arg);
+            if (!thread)
+                return -ESRCH;
+            foreground_process_group = thread->process;
+        } return 0;
+        case TIOCGSID: {
+            *(int*)arg = session->pid;
         } return 0;
         default:
             return -EINVAL;
@@ -126,35 +149,62 @@ namespace dev {
             if (!c)
                 break;
 
+            if (keyboard->is_shift()) {
+                switch (c) {
+                case  '1': c =  '!'; break;
+                case  '2': c =  '@'; break;
+                case  '3': c =  '#'; break;
+                case  '4': c =  '$'; break;
+                case  '5': c =  '%'; break;
+                case  '6': c =  '^'; break;
+                case  '7': c =  '&'; break;
+                case  '8': c =  '*'; break;
+                case  '9': c =  '('; break;
+                case  '0': c =  ')'; break;
+                case  '/': c =  '?'; break;
+                case '\\': c =  '|'; break;
+                case  ',': c =  '<'; break;
+                case  '.': c =  '>'; break;
+                case '\'': c = '\"'; break;
+                case  ']': c =  '}'; break;
+                case  '[': c =  '{'; break;
+                case  ';': c =  ':'; break;
+                case  '-': c =  '_'; break;
+                case  '=': c =  '+'; break;
+                }
+            }
+
             if (keyboard->is_caps() && c >= 'a' && c <= 'z')
                 c = c - 'a' + 'A';
 
-            if (keyboard->is_shift() && c == '1') c = '!';
-            if (keyboard->is_shift() && c == '2') c = '@';
-            if (keyboard->is_shift() && c == '3') c = '#';
-            if (keyboard->is_shift() && c == '4') c = '$';
-            if (keyboard->is_shift() && c == '5') c = '%';
-            if (keyboard->is_shift() && c == '6') c = '^';
-            if (keyboard->is_shift() && c == '7') c = '&';
-            if (keyboard->is_shift() && c == '8') c = '*';
-            if (keyboard->is_shift() && c == '9') c = '(';
-            if (keyboard->is_shift() && c == '0') c = ')';
-            if (keyboard->is_shift() && c == '/') c = '?';
-            if (keyboard->is_shift() && c == '\\') c = '|';
-            if (keyboard->is_shift() && c == ',') c = '<';
-            if (keyboard->is_shift() && c == '.') c = '>';
-            if (keyboard->is_shift() && c == '\'') c = '\"';
-            if (keyboard->is_shift() && c == '[') c = '{';
-            if (keyboard->is_shift() && c == ']') c = '}';
-            if (keyboard->is_shift() && c == ';') c = ':';
-            if (keyboard->is_shift() && c == '-') c = '_';
-            if (keyboard->is_shift() && c == '=') c = '+';
+            if (termios.c_lflag & ECHO) {
+                if (keyboard->is_ctrl()) {
+                    klib::putchar('^');
+                    klib::putchar(c - 'a' + 'A');
+                } else {
+                    klib::putchar(c);
+                }
+            }
 
-            if (keyboard->is_ctrl()) c = c - 'a' + 'A' - 0x40;
+            if (keyboard->is_ctrl())
+                c = c - 'a' + 'A' - 0x40;
+
+            if (termios.c_lflag & ISIG) {
+                int signal = -1;
+                if (c == termios.c_cc[VINTR])
+                    signal = SIGINT;
+                else if (c == termios.c_cc[VQUIT])
+                    signal = SIGQUIT;
+                else if (c == termios.c_cc[VSUSP])
+                    signal = SIGTSTP;
+
+                if (signal != -1) {
+                    foreground_process_group->get_main_thread()->send_signal(signal);
+                    return;
+                }
+            }
 
             input_buffer.write_truncate(&c, 1);
-            if (termios.c_lflag & ECHO)
-                klib::putchar(c);
         }
     }
 }

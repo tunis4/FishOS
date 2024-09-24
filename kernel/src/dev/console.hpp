@@ -9,6 +9,9 @@
 namespace dev {
     struct ConsoleDevNode final : public CharDevNode {
         struct termios termios {};
+        sched::Process *foreground_process_group;
+        sched::Process *session;
+
         input::KeyboardDevice *keyboard;
         input::InputListener *keyboard_listener;
         klib::RingBuffer<char, 512> input_buffer;

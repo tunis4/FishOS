@@ -21,8 +21,8 @@ namespace sched {
             listener_list_head.init();
         }
 
-        static isize await(klib::Span<Event*> events);
-        inline isize await() { Event *event = this; return await(event); }
+        static isize await(klib::Span<Event*> events, bool nonblocking = false);
+        inline isize await(bool nonblocking = false) { Event *event = this; return await(event, nonblocking); }
         isize trigger();
     };
 };

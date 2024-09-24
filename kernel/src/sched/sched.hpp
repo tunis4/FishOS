@@ -36,15 +36,21 @@ namespace sched {
         uptr signal_entry;
         u64 signal_mask;
         u64 pending_signals;
-        bool enqueued_by_signal;
+        int enqueued_by_signal = -1;
         bool entering_signal, exiting_signal;
         ucontext_t *signal_ucontext; // only valid when exiting signal
         u64 saved_signal_mask; // only valid when exiting signal
+
+        // used for SA_RESTART
+        usize last_syscall_num;
+        usize last_syscall_rip;
+        isize last_syscall_ret;
 
         enum State {
             READY,
             RUNNING,
             BLOCKED,
+            STOPPED,
             ZOMBIE
         };
 
@@ -79,12 +85,17 @@ namespace sched {
 
         Process *parent;
         klib::ListHead children_list, sibling_link;
-        Event event;
 
-        bool is_zombie = false;
-        int exit_status;
+        Event zombie_event, stopped_event, continued_event;
+        int status;
 
         userland::SignalAction signal_actions[64];
+
+        Process *session_leader;
+        vfs::VNode *controlling_terminal; // only valid for session leader
+
+        Process *process_group_leader;
+        klib::ListHead process_group_list;
 
         Process();
         ~Process();
@@ -94,6 +105,7 @@ namespace sched {
 
         Thread* get_main_thread();
         int allocate_fdnum(int min_fdnum = 0);
+        void send_process_group_signal(int signal);
     };
 
     void init();
@@ -102,9 +114,10 @@ namespace sched {
     Thread* new_kernel_thread(void (*func)(), bool enqueue);
     Process* new_user_process(vfs::VNode *elf_file, bool enqueue);
 
-    void dequeue_thread(Thread *thread);
-    void enqueue_thread(Thread *thread, bool by_signal = false);
-    [[noreturn]] void dequeue_and_die();
+    void dequeue_thread(Thread *thread, int stop_signal = -1);
+    void enqueue_thread(Thread *thread, int signal = -1);
+    void terminate_thread(Thread *thread, int terminate_signal = -1);
+    [[noreturn]] void terminate_self();
     void yield();
 
     void reschedule_self();

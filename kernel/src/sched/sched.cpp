@@ -12,6 +12,7 @@
 #include <klib/algorithm.hpp>
 #include <userland/elf.hpp>
 #include <gfx/framebuffer.hpp>
+#include <dev/console.hpp>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/wait.h>
@@ -86,6 +87,12 @@ namespace sched {
         first_free_fdnum = 0;
         thread_list.init();
         children_list.init();
+
+        // these should be correctly initiliazed after construction
+        parent = this;
+        process_group_leader = this;
+        process_group_list.init();
+        session_leader = this;
     }
 
     Process::~Process() {
@@ -103,11 +110,18 @@ namespace sched {
 
     void Thread::send_signal(int signal) {
         pending_signals |= 1 << signal;
-        enqueue_thread(this, true);
+        enqueue_thread(this, signal);
     }
 
     bool Thread::has_pending_signals() {
         return pending_signals & ~signal_mask;
+    }
+
+    void Process::send_process_group_signal(int signal) {
+        sched::Process *target;
+        LIST_FOR_EACH(target, &process_group_leader->process_group_list, process_group_list)
+            target->get_main_thread()->send_signal(signal);
+        process_group_leader->get_main_thread()->send_signal(signal);
     }
 
     Thread* new_kernel_thread(void (*func)(), bool enqueue) {
@@ -303,13 +317,18 @@ namespace sched {
         }
 
         auto *console_entry = vfs::path_to_entry("/dev/console");
-        ASSERT(console_entry->vnode != nullptr);
+        auto *console = (dev::ConsoleDevNode*)console_entry->vnode;
+        ASSERT(console != nullptr);
         process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_RDONLY), 0)); // stdin
         process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_WRONLY), 0)); // stdout
         process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_WRONLY), 0)); // stderr
         process->num_file_descriptors = 3;
         process->first_free_fdnum = 3;
         process->cwd = vfs::get_root_entry();
+
+        process->controlling_terminal = console;
+        console->foreground_process_group = process;
+        console->session = process;
 
         char *argv[] = { nullptr };
         char *envp[] = { nullptr };
@@ -340,28 +359,46 @@ namespace sched {
         sched::timer::apic_timer::oneshot(1000000 / sched_freq);
     }
 
-    void dequeue_thread(Thread *thread) {
+    void dequeue_thread(Thread *thread, int stop_signal) {
         klib::InterruptLock guard;
         ASSERT(thread->state == Thread::READY || thread->state == Thread::RUNNING);
         thread->sched_link.remove();
-        thread->state = Thread::BLOCKED;
-    }
-
-    void enqueue_thread(Thread *thread, bool by_signal) {
-        klib::InterruptLock guard;
-        if (thread->state == Thread::BLOCKED) {
-            thread->enqueued_by_signal = by_signal;
-            sched_list_head.add_before(&thread->sched_link);
-            thread->state = Thread::READY;
+        if (stop_signal != -1) {
+            thread->state = Thread::STOPPED;
+            thread->process->status = W_EXITCODE(stop_signal, 0x7f);
+            thread->process->stopped_event.trigger();
+            // thread->process->parent->get_main_thread()->send_signal(SIGCHLD);
+        } else {
+            thread->state = Thread::BLOCKED;
         }
     }
 
-    [[noreturn]] void dequeue_and_die() {
+    void enqueue_thread(Thread *thread, int signal) {
         klib::InterruptLock guard;
-        Thread *thread = cpu::get_current_thread();
+        if (thread->state != Thread::BLOCKED && thread->state != Thread::STOPPED)
+            return;
+        if (thread->state == Thread::STOPPED && signal == -1)
+            return;
+        thread->enqueued_by_signal = signal;
+        sched_list_head.add_before(&thread->sched_link);
+        if (thread->state == Thread::BLOCKED)
+            thread->state = Thread::READY;
+    }
+
+    void terminate_thread(Thread *thread, int terminate_signal) {
+        klib::InterruptLock guard;
+        ASSERT(thread->state == Thread::READY || thread->state == Thread::RUNNING);
         thread->sched_link.remove();
         thread->state = Thread::ZOMBIE;
-        thread->process->event.trigger();
+        if (terminate_signal != -1)
+            thread->process->status = W_EXITCODE(0, terminate_signal);
+        thread->process->zombie_event.trigger();
+        // thread->process->parent->get_main_thread()->send_signal(SIGCHLD);
+    }
+
+    [[noreturn]] void terminate_self() {
+        klib::InterruptLock guard;
+        terminate_thread(cpu::get_current_thread());
         yield();
         klib::unreachable();
     }
@@ -387,6 +424,7 @@ namespace sched {
     usize scheduler_isr(u64 vec, cpu::InterruptState *gpr_state) {
         cpu::CPU *cpu = cpu::get_current_cpu();
         Thread *current_thread = cpu->running_thread;
+    retry:
         if (current_thread) {
             current_thread->yield_await.unlock();
 
@@ -408,7 +446,7 @@ namespace sched {
         else
             current_thread = idle_thread;
 
-        ASSERT(current_thread->state != Thread::BLOCKED);
+        ASSERT(current_thread->state != Thread::BLOCKED && current_thread->state != Thread::ZOMBIE);
 
         cpu->user_stack = current_thread->saved_user_stack;
         cpu->kernel_stack = current_thread->saved_kernel_stack;
@@ -422,12 +460,20 @@ namespace sched {
         cpu::write_fs_base(current_thread->fs_base);
 
         current_thread->process->pagemap->activate();
+
+        if (current_thread->enqueued_by_signal == SIGCONT)
+            if (current_thread->state == Thread::STOPPED)
+                current_thread->state = Thread::READY;
+
         if ((current_thread->gpr_state.cs & 3) == 3) {
             if (current_thread->entering_signal)
                 userland::dispatch_pending_signal(current_thread);
             else if (current_thread->exiting_signal)
                 userland::return_from_signal(current_thread);
         }
+
+        if (current_thread->state == Thread::ZOMBIE || current_thread->state == Thread::STOPPED)
+            goto retry;
         current_thread->state = Thread::RUNNING;
 
         // load the new thread's registers
@@ -440,8 +486,8 @@ namespace sched {
 #if SYSCALL_TRACE
         klib::printf("exit(%d)\n", status);
 #endif
-        cpu::get_current_thread()->process->exit_status = W_EXITCODE(status, 0);
-        dequeue_and_die();
+        cpu::get_current_thread()->process->status = W_EXITCODE(status, 0);
+        terminate_self();
     }
     
     isize syscall_fork(cpu::syscall::SyscallState *state) {
@@ -492,6 +538,9 @@ namespace sched {
 
         new_process->parent = old_process;
         old_process->children_list.add_before(&new_process->sibling_link);
+        new_process->process_group_leader = old_process->process_group_leader;
+        old_process->process_group_list.add_before(&new_process->process_group_list);
+        new_process->session_leader = old_process->session_leader;
 
         new_thread->state = Thread::READY;
         sched_list_head.add_before(&new_thread->sched_link);
@@ -568,29 +617,35 @@ namespace sched {
 #if SYSCALL_TRACE
         klib::printf("waitpid(%d, %#lX, %d)\n", pid, (uptr)status, options);
 #endif
-        if (options != 0)
-            klib::printf("waitpid: ignoring options (%d)\n", options);
+        if (options & ~(WNOHANG | WUNTRACED | WCONTINUED))
+            klib::printf("waitpid: ignoring options %#X\n", options);
 
         Process *current_process = cpu::get_current_thread()->process;
         Process *target_child = nullptr;
-        isize which = 0;
 
         klib::Vector<Process*> target_children;
         klib::Vector<Event*> events;
+
+        auto add_child = [&] (Process *child) {
+            target_children.push_back(child);
+            events.push_back(&child->zombie_event);
+            if (options & WUNTRACED) {
+                target_children.push_back(child);
+                events.push_back(&child->stopped_event);
+            }
+            if (options & WCONTINUED) {
+                target_children.push_back(child);
+                events.push_back(&child->continued_event);
+            }
+        };
 
         if (pid == -1) {
             if (current_process->children_list.is_empty())
                 return -ECHILD;
 
             Process *child;
-            LIST_FOR_EACH(child, &current_process->children_list, sibling_link) {
-                if (child->is_zombie) {
-                    target_child = child;
-                    goto found_target;
-                }
-                target_children.push_back(child);
-                events.push_back(&child->event);
-            }
+            LIST_FOR_EACH(child, &current_process->children_list, sibling_link)
+                add_child(child);
         } else if (pid > 0) {
             auto &thread_table = get_thread_table();
             if (pid >= (int)thread_table.size())
@@ -600,33 +655,27 @@ namespace sched {
             if (child->parent != current_process)
                 return -ECHILD;
 
-            if (child->is_zombie) {
-                target_child = child;
-                goto found_target;
-            }
-            target_children.push_back(child);
-            events.push_back(&child->event);
+            add_child(child);
         } else {
             klib::printf("waitpid: unhandled pid %d\n", pid);
             return 0;
         }
 
-        if (options & WNOHANG)
-            return 0;
-
-        if (Event::await(events) == -EINTR)
-            return -EINTR;
+        isize which = Event::await(events, options & WNOHANG);
+        if (which < 0)
+            return which;
 
         target_child = target_children[which];
-    
-    found_target:
-        auto child_pid = target_child->pid;
+        int child_pid = target_child->pid;
 
         if (status)
-            *status = target_child->exit_status;
+            *status = target_child->status;
 
-        target_child->sibling_link.remove();
-        delete target_child;
+        if (!WIFSTOPPED(target_child->status) && !WIFCONTINUED(target_child->status)) {
+            // klib::printf("deleting child %d\n", target_child->pid);
+            target_child->sibling_link.remove();
+            delete target_child;
+        }
 
         return child_pid;
     }
@@ -658,6 +707,6 @@ namespace sched {
 #if SYSCALL_TRACE
         klib::printf("thread_exit()\n");
 #endif
-        dequeue_and_die();
+        terminate_self();
     }
 }

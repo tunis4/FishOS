@@ -8,25 +8,46 @@
 #include <userland/socket.hpp>
 #include <userland/futex.hpp>
 #include <userland/signal.hpp>
+#include <userland/pid.hpp>
 
 namespace cpu::syscall {
-    static void *__syscall_table[51];
+    static void *__syscall_table[58];
 
     extern "C" void __syscall_handler(SyscallState *state) {
-        cpu::toggle_interrupts(true);
-        if (state->rax == 13 || state->rax == 14) { // fork and execve
-            auto *syscall = (isize (*)(SyscallState *, usize, usize, usize, usize, usize))__syscall_table[state->rax];
-            state->rax = syscall(state, state->rdi, state->rsi, state->rdx, state->r10, state->r8);
-        } else {
-            auto *syscall = (isize (*)(usize, usize, usize, usize, usize))__syscall_table[state->rax];
-            state->rax = syscall(state->rdi, state->rsi, state->rdx, state->r10, state->r8);
-        }
-        cpu::toggle_interrupts(false);
         auto *thread = cpu::get_current_thread();
+        thread->last_syscall_num = state->rax;
+        thread->last_syscall_rip = state->rcx;
+#if SYSCALL_TRACE
+        klib::printf("[%d] ", thread->tid);
+#endif
+        cpu::toggle_interrupts(true);
+
+        if (state->rax >= sizeof(__syscall_table) / sizeof(void*)) {
+            klib::printf("invalid syscall %lu\n", state->rax);
+            state->rax = -ENOSYS;
+        } else {
+            if (state->rax == 13 || state->rax == 14) { // fork and execve
+                auto *syscall = (isize (*)(SyscallState *, usize, usize, usize, usize, usize))__syscall_table[state->rax];
+                state->rax = syscall(state, state->rdi, state->rsi, state->rdx, state->r10, state->r8);
+            } else {
+                auto *syscall = (isize (*)(usize, usize, usize, usize, usize))__syscall_table[state->rax];
+                state->rax = syscall(state->rdi, state->rsi, state->rdx, state->r10, state->r8);
+            }
+        }
+
+        cpu::toggle_interrupts(false);
+        thread->last_syscall_ret = (isize)state->rax;
         if (!thread->exiting_signal && !thread->entering_signal && thread->has_pending_signals()) {
             thread->entering_signal = true;
             sched::reschedule_self(); // interrupts will be reenabled after sysret and the self irq will be immediately handled
         }
+
+#if SYSCALL_TRACE
+        if ((isize)state->rax >= 0)
+            klib::printf("[%d] return: %#lX\n", thread->tid, state->rax);
+        else
+            klib::printf("[%d] return errno: %ld\n", thread->tid, -(isize)state->rax);
+#endif
     }
 
     void init_syscall_table() {
@@ -81,5 +102,12 @@ namespace cpu::syscall {
         __syscall_table[48] = (void*)&userland::syscall_sigmask;
         __syscall_table[49] = (void*)&userland::syscall_sigaction;
         __syscall_table[50] = (void*)&userland::syscall_kill;
+        __syscall_table[51] = (void*)&userland::syscall_gettid;
+        __syscall_table[52] = (void*)&userland::syscall_getpid;
+        __syscall_table[53] = (void*)&userland::syscall_getppid;
+        __syscall_table[54] = (void*)&userland::syscall_getpgid;
+        __syscall_table[55] = (void*)&userland::syscall_setpgid;
+        __syscall_table[56] = (void*)&userland::syscall_getsid;
+        __syscall_table[57] = (void*)&userland::syscall_setsid;
     }
 }
