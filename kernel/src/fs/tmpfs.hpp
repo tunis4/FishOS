@@ -24,7 +24,7 @@ namespace tmpfs {
         virtual void lookup(vfs::Entry *entry);
         virtual void create(vfs::Entry *entry, vfs::NodeType new_node_type = vfs::NodeType::NONE);
         virtual void remove(vfs::Entry *entry);
-        virtual void stat(vfs::Entry *entry, struct stat *statbuf);
+        virtual void stat(vfs::VNode *vnode, struct stat *statbuf);
         virtual isize readdir(vfs::Entry *entry, void *buf, usize max_size, usize *cursor);
     };
 

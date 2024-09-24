@@ -80,7 +80,7 @@ namespace vfs {
         virtual void lookup(Entry *entry) = 0;
         virtual void create(Entry *entry, NodeType new_node_type = NodeType::NONE) = 0;
         virtual void remove(Entry *entry) = 0;
-        virtual void stat(Entry *entry, struct stat *statbuf) = 0;
+        virtual void stat(VNode *vnode, struct stat *statbuf) = 0;
         virtual isize readdir(Entry *entry, void *buf, usize max_size, usize *cursor) = 0;
     };
 

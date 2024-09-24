@@ -480,15 +480,15 @@ namespace vfs {
         klib::printf("stat(%d, \"%s\", %#lX, %d)\n", fd, path, (uptr)statbuf, flags);
 #endif
         sched::Process *process = cpu::get_current_thread()->process;
-        Entry *entry;
+        VNode *vnode;
         if ((flags & AT_EMPTY_PATH) && path[0] == '\0') {
             if (fd == AT_FDCWD) {
-                entry = process->cwd;
+                vnode = process->cwd->vnode;
             } else {
                 FileDescription *description = get_file_description(fd);
                 if (!description)
                     return -EBADF;
-                entry = description->entry;
+                vnode = description->vnode;
             }
         } else {
             Entry *starting_point = nullptr;
@@ -497,10 +497,9 @@ namespace vfs {
             Entry *result = path_to_entry(path, starting_point, (flags & AT_SYMLINK_NOFOLLOW) == 0);
             if (result->vnode == nullptr)
                 return -ENOENT;
-            entry = result;
+            vnode = result->reduce()->vnode;
         }
 
-        VNode *vnode = entry->reduce()->vnode;
         memset(statbuf, 0, sizeof(struct stat));
         switch (vnode->type) {
         case NodeType::REGULAR:      statbuf->st_mode = S_IFREG  | 0644; break;
@@ -514,15 +513,15 @@ namespace vfs {
         }
 
         statbuf->st_dev = dev::make_dev_id(1, 3);
-        if (vfs::is_device(entry->vnode->type))
-            statbuf->st_rdev = ((dev::DevNode*)entry->vnode)->dev_id;
+        if (vfs::is_device(vnode->type))
+            statbuf->st_rdev = ((dev::DevNode*)vnode)->dev_id;
         statbuf->st_atim = vnode->access_time.to_posix();
         statbuf->st_mtim = vnode->modification_time.to_posix();
         statbuf->st_ctim = vnode->creation_time.to_posix();
         Filesystem *fs = vnode->fs;
         if (fs)
-            fs->stat(entry->reduce(), statbuf);
-        if (entry == root)
+            fs->stat(vnode, statbuf);
+        if (vnode == root->vnode)
             statbuf->st_blocks = mem::pmm::stats.total_free_pages;
         return 0;
     }
