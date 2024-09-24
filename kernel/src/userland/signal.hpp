@@ -5,6 +5,11 @@
 #include <signal.h>
 
 namespace userland {
+    enum class SignalDefault {
+        IGNORE, TERMINATE, CORE, CONTINUE, STOP
+    };
+    SignalDefault signal_default_action(int signal);
+
     struct SignalAction {
         void *handler;
         usize flags;

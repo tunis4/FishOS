@@ -197,12 +197,12 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
     sched::Process *init_process = sched::new_user_process(init_entry->vnode, true);
     
     while (true) {
-        if (init_process->is_zombie) {
+        if (init_process->get_main_thread()->state == sched::Thread::ZOMBIE) {
             klib::printf("Init process died, rebooting in 5 seconds\n");
             sched::timer::hpet::stall_ms(5000);
             cpu::write_cr3(0);
         }
-        init_process->event.await();
+        init_process->zombie_event.await();
     }
-    // sched::dequeue_and_die();
+    // sched::terminate_self();
 }

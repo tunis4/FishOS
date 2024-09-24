@@ -107,6 +107,7 @@ source_files = [
   'src/userland/socket.cpp',
   'src/userland/futex.cpp',
   'src/userland/signal.cpp',
+  'src/userland/pid.cpp',
 ]
 
 fonts = [

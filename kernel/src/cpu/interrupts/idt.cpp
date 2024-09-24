@@ -98,7 +98,7 @@ namespace cpu::interrupts {
                 klib::printf("%#lX\n", frame->ip);
                 frame = frame->next;
             }
-            sched::dequeue_and_die();
+            sched::terminate_self();
         }
         klib::printf("\nCPU Exception: %s (%#lX)\n", err_name, vec);
         if (state->err) klib::printf("Error code: %#04lX\n", state->err);
