@@ -8,34 +8,34 @@
 namespace dev {
     struct NullDevNode final : public CharDevNode {
         NullDevNode() {}
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) { return 0; }
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) { return count; }
-        virtual isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) { return 0; }
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override { return 0; }
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override { return count; }
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return 0; }
     };
 
     struct ZeroDevNode final : public CharDevNode {
         ZeroDevNode() {}
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) { memset(buf, 0, count); return count; }
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) { return count; }
-        virtual isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) { return 0; }
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override { memset(buf, 0, count); return count; }
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override { return count; }
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return 0; }
     };
 
     struct FullDevNode final : public CharDevNode {
         FullDevNode() {}
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) { memset(buf, 0, count); return count; }
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) { return -ENOSPC; }
-        virtual isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) { return 0; }
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override { memset(buf, 0, count); return count; }
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override { return -ENOSPC; }
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return 0; }
     };
 
     struct MemDevNode final : public SeekableCharDevNode {
         MemDevNode() {}
 
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override {
             memcpy(buf, (void*)(mem::vmm::hhdm + offset), count);
             return count;
         }
 
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) {
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override {
             memcpy((void*)(mem::vmm::hhdm + offset), buf, count);
             return count;
         }
@@ -44,7 +44,7 @@ namespace dev {
     struct PortDevNode final : public SeekableCharDevNode {
         PortDevNode() {}
 
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override {
             if (offset >= 0x10000)
                 return 0;
             usize actual_count = offset + count > 0x10000 ? 0x10000 - offset : count;
@@ -53,7 +53,7 @@ namespace dev {
             return actual_count;
         }
 
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) {
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override {
             if (offset >= 0x10000)
                 return 0;
             usize actual_count = offset + count > 0x10000 ? 0x10000 - offset : count;

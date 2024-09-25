@@ -25,9 +25,9 @@ namespace gfx {
         usize size;
 
         FramebufferDevNode();
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset);
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset);
-        virtual isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg);
-        virtual isize mmap(vfs::FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags);
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override;
+        isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg) override;
+        isize mmap(vfs::FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) override;
     };
 }

@@ -19,10 +19,10 @@ namespace dev {
         ConsoleDevNode();
         ~ConsoleDevNode();
 
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset);
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset);
-        virtual isize poll(vfs::FileDescription *fd, isize events);
-        virtual isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg);
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override;
+        isize poll(vfs::FileDescription *fd, isize events) override;
+        isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg) override;
     
     private:
         void process_input_event(input::InputEvent &input_event);

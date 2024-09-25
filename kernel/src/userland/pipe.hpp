@@ -14,12 +14,12 @@ namespace userland {
         Pipe();
         virtual ~Pipe() {}
 
-        virtual isize  open(vfs::FileDescription *fd);
-        virtual  void close(vfs::FileDescription *fd);
-        virtual isize  read(vfs::FileDescription *fd, void *buf, usize count, usize offset);
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset);
-        virtual isize  poll(vfs::FileDescription *fd, isize events);
-        virtual isize  seek(vfs::FileDescription *fd, usize position, isize offset, int whence) { return -ESPIPE; }
+        isize open(vfs::FileDescription *fd) override;
+        void close(vfs::FileDescription *fd) override;
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override;
+        isize poll(vfs::FileDescription *fd, isize events) override;
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return -ESPIPE; }
     };
 
     isize syscall_pipe(int pipefd[2], int flags);
