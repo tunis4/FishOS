@@ -19,7 +19,7 @@ namespace userland {
         virtual isize recvmsg(vfs::FileDescription *fd, struct msghdr *hdr, int flags) = 0;
         virtual isize sendmsg(vfs::FileDescription *fd, const struct msghdr *hdr, int flags) = 0;
 
-        virtual isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) { return -ESPIPE; }
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return -ESPIPE; }
     };
 
     struct LocalSocket final : public Socket {
@@ -36,16 +36,16 @@ namespace userland {
         LocalSocket();
         ~LocalSocket();
 
-        virtual isize bind(vfs::FileDescription *fd, const struct sockaddr *addr_ptr, socklen_t addr_length);
-        virtual isize connect(vfs::FileDescription *fd, const struct sockaddr *addr_ptr, socklen_t addr_length);
-        virtual isize listen(vfs::FileDescription *fd, int backlog);
-        virtual isize accept(vfs::FileDescription *fd, struct sockaddr *addr_ptr, socklen_t *addr_length, int flags);
-        virtual isize recvmsg(vfs::FileDescription *fd, struct msghdr *hdr, int flags);
-        virtual isize sendmsg(vfs::FileDescription *fd, const struct msghdr *hdr, int flags);
+        isize bind(vfs::FileDescription *fd, const struct sockaddr *addr_ptr, socklen_t addr_length) override;
+        isize connect(vfs::FileDescription *fd, const struct sockaddr *addr_ptr, socklen_t addr_length) override;
+        isize listen(vfs::FileDescription *fd, int backlog) override;
+        isize accept(vfs::FileDescription *fd, struct sockaddr *addr_ptr, socklen_t *addr_length, int flags) override;
+        isize recvmsg(vfs::FileDescription *fd, struct msghdr *hdr, int flags) override;
+        isize sendmsg(vfs::FileDescription *fd, const struct msghdr *hdr, int flags) override;
 
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset);
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset);
-        virtual isize poll(vfs::FileDescription *fd, isize events);
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override;
+        isize poll(vfs::FileDescription *fd, isize events) override;
     };
 
     isize syscall_socket(int family, int type, int protocol);

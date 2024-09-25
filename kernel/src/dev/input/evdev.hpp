@@ -10,11 +10,11 @@ namespace dev::input {
         EventDevNode(InputDevice *input_device);
         virtual ~EventDevNode();
 
-        virtual isize open(vfs::FileDescription *fd);
-        virtual void close(vfs::FileDescription *fd);
-        virtual isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset);
-        virtual isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) { return count; }
-        virtual isize poll(vfs::FileDescription *fd, isize events);
-        virtual isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg);
+        isize open(vfs::FileDescription *fd) override;
+        void close(vfs::FileDescription *fd) override;
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override { return count; }
+        isize poll(vfs::FileDescription *fd, isize events) override;
+        isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg) override;
     };
 }

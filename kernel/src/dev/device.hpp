@@ -27,14 +27,14 @@ namespace dev {
         }
 
         virtual ~CharDevNode() {}
-        virtual isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) { return -ESPIPE; }
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return -ESPIPE; }
     };
 
     struct SeekableCharDevNode : public CharDevNode {
         SeekableCharDevNode() {}
         virtual ~SeekableCharDevNode() {}
 
-        virtual isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) {
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override {
             switch (whence) {
             case SEEK_SET:
                 return offset;
