@@ -113,6 +113,9 @@ namespace vfs {
                 last = true;
             } else if (s == path + path_len - 1) {
                 last = true;
+            } else if (s == path) { // duplicate slash
+                path++;
+                continue;
             }
 
             usize entry_name_len = s - path;
@@ -502,7 +505,7 @@ namespace vfs {
 
         memset(statbuf, 0, sizeof(struct stat));
         switch (vnode->type) {
-        case NodeType::REGULAR:      statbuf->st_mode = S_IFREG  | 0644; break;
+        case NodeType::REGULAR:      statbuf->st_mode = S_IFREG  | 0777; break;
         case NodeType::DIRECTORY:    statbuf->st_mode = S_IFDIR  | 0755; break;
         case NodeType::BLOCK_DEVICE: statbuf->st_mode = S_IFBLK  | 0666; break;
         case NodeType::CHAR_DEVICE:  statbuf->st_mode = S_IFCHR  | 0666; break;

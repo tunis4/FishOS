@@ -41,10 +41,8 @@ namespace klib {
         return c;
     }
 
-    int vprintf(const char *format, va_list list) {
-        InterruptLock interrupt_guard;
-        LockGuard<Spinlock> guard(print_lock);
-        
+    template<typename F>
+    int printf_template(F put, const char *format, va_list list) {
         int written = 0;
         for (int i = 0; format[i]; i++) {
             bool alt_form = false;
@@ -84,8 +82,8 @@ namespace klib {
                     case 'x':
                     case 'X': {
                         if (alt_form) {
-                            putchar('0');
-                            putchar('x');
+                            put('0');
+                            put('x');
                             written += 2;
                         }
                         const char *low = "0123456789abcdef";
@@ -97,14 +95,14 @@ namespace klib {
                         usize digits = num_digits(value, 16);
                         if (zero_pad && zero_pad > digits) {
                             for (usize j = 0; j < zero_pad - digits - 1; j++)
-                                putchar('0');
+                                put('0');
                             written += zero_pad - digits - 1;
                         }
                         for (int di = digits; di >= 0; di--) {
                             u64 v = value;
                             for (int dii = 0; dii < di; dii++) v /= 16;
                             u64 d = v % 16;
-                            putchar(used[d]);
+                            put(used[d]);
                             written++;
                         }
                         goto end;
@@ -114,27 +112,27 @@ namespace klib {
                         if (long_int) {
                             value = va_arg(list, u64);
                             if ((i64)value < 0) {
-                                putchar('-');
+                                put('-');
                                 value = -(i64)value;
                             }
                         } else {
                             value = va_arg(list, u32);
                             if ((i32)value < 0) {
-                                putchar('-');
+                                put('-');
                                 value = -(i32)value;
                             }
                         }
                         usize digits = num_digits(value);
                         if (zero_pad && zero_pad > digits) {
                             for (usize j = 0; j < zero_pad - digits - 1; j++)
-                                putchar('0');
+                                put('0');
                             written += zero_pad - digits - 1;
                         }
                         for (int di = digits; di >= 0; di--) {
                             u64 v = value;
                             for (int dii = 0; dii < di; dii++) v /= 10;
                             u64 d = v % 10;
-                            putchar('0' + d);
+                            put('0' + d);
                             written++;
                         }
                         goto end;
@@ -146,21 +144,21 @@ namespace klib {
                         usize digits = num_digits(value);
                         if (zero_pad && zero_pad > digits) {
                             for (usize j = 0; j < zero_pad - digits - 1; j++)
-                                putchar('0');
+                                put('0');
                             written += zero_pad - digits - 1;
                         }
                         for (int di = digits; di >= 0; di--) {
                             u64 v = value;
                             for (int dii = 0; dii < di; dii++) v /= 10;
                             u64 d = v % 10;
-                            putchar('0' + d);
+                            put('0' + d);
                             written++;
                         }
                         goto end;
                     }
                     case 'c': {
                         char c = va_arg(list, int);
-                        putchar(c);
+                        put(c);
                         written++;
                         goto end;
                     }
@@ -168,12 +166,12 @@ namespace klib {
                         const char *str = va_arg(list, const char*);
                         if (s_length) {
                             for (usize i = 0; i < s_length; i++) {
-                                putchar(str[i]);
+                                put(str[i]);
                                 written++;
                             }
                         } else {
                             for (usize i = 0; str[i]; i++) {
-                                putchar(str[i]);
+                                put(str[i]);
                                 written++;
                             }
                         }
@@ -186,12 +184,18 @@ namespace klib {
             }
 
             written++;
-            putchar(format[i]);
+            put(format[i]);
         }
         return written;
     }
 
-    [[gnu::format(printf, 1, 2)]] int printf(const char *format, ...) {
+    int vprintf(const char *format, va_list list) {
+        InterruptLock interrupt_guard;
+        LockGuard<Spinlock> guard(print_lock);
+        return printf_template(putchar, format, list);
+    }
+
+    int printf(const char *format, ...) {
         va_list list;
         va_start(list, format);
         int i = vprintf(format, list);
@@ -199,12 +203,29 @@ namespace klib {
         return i;
     }
 
+    int snprintf(char *buffer, usize size, const char *format, ...) {
+        va_list list;
+        va_start(list, format);
+
+        usize i = 0;
+        int written = printf_template([&] (char c) {
+            if (i < size - 1) {
+                buffer[i] = c;
+                i++;
+            }
+        }, format, list);
+        buffer[i] = '\0';
+
+        va_end(list);
+        return written;
+    }
+
     void panic_vprintf(const char *format, va_list list) {
         print_lock.unlock();
         vprintf(format, list);
     }
 
-    [[gnu::format(printf, 1, 2)]] void panic_printf(const char *format, ...) {
+    void panic_printf(const char *format, ...) {
         va_list list;
         va_start(list, format);
         panic_vprintf(format, list);

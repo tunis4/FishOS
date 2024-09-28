@@ -1,7 +1,7 @@
-#include <dev/console.hpp>
+#include <dev/tty/console.hpp>
 #include <sched/sched.hpp>
 
-namespace dev {
+namespace dev::tty {
     ConsoleDevNode::ConsoleDevNode() {
         keyboard = input::main_keyboard;
         event = &keyboard->event;
@@ -12,45 +12,32 @@ namespace dev {
                 self->process_input_event(input_event);
         }, this);
 
-        termios.c_iflag = ICRNL;
-        termios.c_oflag = ONLCR;
-        termios.c_lflag = ECHO | ICANON | ISIG;
-        termios.c_cflag = 0;
-        termios.ibaud = 38400;
-        termios.obaud = 38400;
-        termios.c_cc[VMIN] = 1;
-        termios.c_cc[VINTR] = 0x03;
-        termios.c_cc[VQUIT] = 0x1c;
-        termios.c_cc[VERASE] = '\b';
-        termios.c_cc[VKILL] = 0x15;
-        termios.c_cc[VEOF] = 0x04;
-        termios.c_cc[VSTART] = 0x11;
-        termios.c_cc[VSTOP] = 0x13;
-        termios.c_cc[VSUSP] = 0x1a;
+        auto &term = gfx::kernel_terminal();
+        winsize.ws_col = term.width_chars;
+        winsize.ws_row = term.height_chars;
+        winsize.ws_xpixel = term.actual_width;
+        winsize.ws_ypixel = term.actual_height;
     }
 
     ConsoleDevNode::~ConsoleDevNode() {
         keyboard->remove_listener(keyboard_listener);
     }
 
-    isize ConsoleDevNode::read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
-        auto *process_group = cpu::get_current_thread()->process->process_group_leader;
-        if (process_group != foreground_process_group)
-            process_group->send_process_group_signal(SIGTTIN);
+    isize ConsoleDevNode::open(vfs::FileDescription *fd) {
+        Terminal::on_open(fd);
+        return 0;
+    }
 
+    isize ConsoleDevNode::read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
+        Terminal::on_read();
         while (input_buffer.is_empty())
             if (event->await() == -EINTR)
                 return -EINTR;
-
         return input_buffer.read((char*)buf, count);
     }
 
     isize ConsoleDevNode::write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) {
-        auto *process_group = cpu::get_current_thread()->process->process_group_leader;
-        if (termios.c_lflag & TOSTOP)
-            if (process_group != foreground_process_group)
-                process_group->send_process_group_signal(SIGTTOU);
-
+        Terminal::on_write();
         return klib::printf("%.*s", (int)count, (char*)buf);
     }
 
@@ -62,38 +49,7 @@ namespace dev {
     }
 
     isize ConsoleDevNode::ioctl(vfs::FileDescription *fd, usize cmd, void *arg) {
-        switch (cmd) {
-        case TIOCGWINSZ: {
-            struct winsize *ws = (struct winsize*)arg;
-            auto &terminal = gfx::kernel_terminal();
-            ws->ws_col = terminal.width_chars;
-            ws->ws_row = terminal.height_chars;
-            ws->ws_xpixel = terminal.actual_width;
-            ws->ws_ypixel = terminal.actual_height;
-        } return 0;
-        case TCGETS: {
-            memcpy(arg, &termios, sizeof(termios));
-        } return 0;
-        case TCSETS:
-        case TCSETSW:
-        case TCSETSF: {
-            memcpy(&termios, arg, sizeof(termios));
-        } return 0;
-        case TIOCGPGRP: {
-            *(int*)arg = foreground_process_group->pid;
-        } return 0;
-        case TIOCSPGRP: {
-            auto *thread = sched::Thread::get_from_tid(*(int*)arg);
-            if (!thread)
-                return -ESRCH;
-            foreground_process_group = thread->process;
-        } return 0;
-        case TIOCGSID: {
-            *(int*)arg = session->pid;
-        } return 0;
-        default:
-            return -EINVAL;
-        }
+        return tty_ioctl(fd, cmd, arg);
     }
 
     static const char keycode_map[128] = {
@@ -177,34 +133,14 @@ namespace dev {
             if (keyboard->is_caps() && c >= 'a' && c <= 'z')
                 c = c - 'a' + 'A';
 
-            if (termios.c_lflag & ECHO) {
-                if (keyboard->is_ctrl()) {
-                    klib::putchar('^');
-                    klib::putchar(c - 'a' + 'A');
-                } else {
-                    klib::putchar(c);
-                }
-            }
-
             if (keyboard->is_ctrl())
                 c = c - 'a' + 'A' - 0x40;
 
-            if (termios.c_lflag & ISIG) {
-                int signal = -1;
-                if (c == termios.c_cc[VINTR])
-                    signal = SIGINT;
-                else if (c == termios.c_cc[VQUIT])
-                    signal = SIGQUIT;
-                else if (c == termios.c_cc[VSUSP])
-                    signal = SIGTSTP;
-
-                if (signal != -1) {
-                    foreground_process_group->get_main_thread()->send_signal(signal);
-                    return;
-                }
-            }
-
-            input_buffer.write_truncate(&c, 1);
+            process_input_char(c, [this] (char c) {
+                input_buffer.write_truncate(&c, 1);
+            }, [] (char c) {
+                klib::putchar(c);
+            });
         }
     }
 }

@@ -85,6 +85,7 @@ namespace mem::pmm {
     }
 
     Page* alloc_page() {
+        klib::InterruptLock interrupt_guard;
         klib::LockGuard guard(pmm_lock);
 
         if (freelist.is_empty()) [[unlikely]]
@@ -98,6 +99,7 @@ namespace mem::pmm {
     }
 
     void free_page(Page *page) {
+        klib::InterruptLock interrupt_guard;
         klib::LockGuard guard(pmm_lock);
 
         page->free = true;

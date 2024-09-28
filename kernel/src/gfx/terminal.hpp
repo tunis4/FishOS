@@ -38,7 +38,7 @@ namespace gfx {
         int init(void *header);
     };
 
-    struct Terminal {
+    struct TerminalEmulator {
         static constexpr u32 bold_flag = 1 << 24;
 
         Framebuffer *framebuffer;
@@ -97,13 +97,13 @@ namespace gfx {
         void reset_control_sequence();
         void apply_control_sequence(char code);
 
-        Terminal(Framebuffer *fb);
-        ~Terminal();
+        TerminalEmulator(Framebuffer *fb);
+        ~TerminalEmulator();
         
         void write_char(char c);
     };
 
-    Terminal& kernel_terminal();
+    TerminalEmulator& kernel_terminal();
     bool is_kernel_terminal_ready();
     void set_kernel_terminal_ready();
 }

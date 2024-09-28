@@ -68,7 +68,11 @@ source_files = [
   'src/cpu/syscall/syscall_entry.asm',
 
   'src/dev/device.cpp',
-  'src/dev/console.cpp',
+
+  'src/dev/tty/tty.cpp',
+  'src/dev/tty/pty.cpp',
+  'src/dev/tty/console.cpp',
+
   'src/dev/input/input.cpp',
   'src/dev/input/evdev.cpp',
   'src/dev/input/ps2/ps2.cpp',
