@@ -17,7 +17,7 @@ build() {
         --with-xkb-bin-directory=/usr/bin \
         --with-xkb-path=/usr/share/X11/xkb \
         --with-xkb-output=/var/lib/xkb \
-        --with-fontrootdir=/usr/share/fonts/X11 \
+        --with-fontrootdir=${prefix}/share/fonts/X11 \
         --enable-xorg \
         --enable-xv \
         --enable-xvfb \

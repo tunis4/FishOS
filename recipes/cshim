@@ -1,8 +1,8 @@
 name=cshim
-version=2ec3cf90aac9207ce54eee70aa013910f5a6d243
+version=4e36d01a03244f560b44a9b13c16d911bea59fed
 revision=1
 tarball_url="https://github.com/managarm/cshim/archive/${version}.tar.gz"
-tarball_blake2b="5b61d30b73900c9bd0c9081130cc9c7d6fec0719c9f916fd6da688246d117e6224206783beb78762b2954679c7ff6520f16177df65e04d203a580d42e136b43f"
+tarball_blake2b="e619960ac3390a2ec83309916324f890aed3c972825c50dc03f59749a79f43674ff7452fbabb837ce45008d36043e5f66a93f3a5f113eb0c0f1fef820eafdab6"
 imagedeps="meson ninja"
 hostdeps="pkg-config"
 

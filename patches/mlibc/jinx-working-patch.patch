@@ -14,7 +14,7 @@ index 00000000..da7a438c
 +
 +#endif
 diff --git mlibc-clean/meson.build mlibc-workdir/meson.build
-index 42bee60d..fdb55a5f 100644
+index f119bf8c..2a469c6e 100644
 --- mlibc-clean/meson.build
 +++ mlibc-workdir/meson.build
 @@ -264,6 +264,10 @@ elif host_machine.system() == 'dripos'
@@ -398,10 +398,10 @@ index 00000000..f5508a1e
 +}
 diff --git mlibc-clean/sysdeps/fishos/generic/generic.cpp mlibc-workdir/sysdeps/fishos/generic/generic.cpp
 new file mode 100644
-index 00000000..fb58801c
+index 00000000..e8a192b4
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/generic/generic.cpp
-@@ -0,0 +1,351 @@
+@@ -0,0 +1,388 @@
 +#include <fishos/syscall.h>
 +#include <stddef.h>
 +#include <bits/ensure.h>
@@ -409,8 +409,10 @@ index 00000000..fb58801c
 +#include <mlibc/debug.hpp>
 +#include <mlibc/all-sysdeps.hpp>
 +#include <mlibc/thread-entry.hpp>
++#include <stdio.h>
 +#include <errno.h>
 +#include <sys/resource.h>
++#include <sys/ioctl.h>
 +
 +namespace mlibc {
 +
@@ -748,6 +750,41 @@ index 00000000..fb58801c
 +	if (ret < 0)
 +		return -ret;
 +	return 0;
++}
++
++int sys_ptsname(int fd, char *buffer, size_t length) {
++	int index;
++	if (int e = sys_ioctl(fd, TIOCGPTN, &index, nullptr); e)
++		return e;
++	if ((size_t)snprintf(buffer, length, "/dev/pts/%d", index) >= length)
++		return ERANGE;
++	return 0;
++}
++
++int sys_unlockpt(int fd) {
++	int unlock = 0;
++	if (int e = sys_ioctl(fd, TIOCSPTLCK, &unlock, nullptr); e)
++		return e;
++	return 0;
++}
++
++int sys_ttyname(int fd, char *buffer, size_t length) {
++	int e = sys_ptsname(fd, buffer, length);
++	if (e == 0 || e == ERANGE)
++		return e;
++	if (!sys_isatty(fd))
++		return ENOTTY;
++	if ((size_t)snprintf(buffer, length, "/dev/console") >= length)
++		return ERANGE;
++	return 0;
++}
++
++int sys_setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value) {
++	return ENOSYS;
++}
++
++int sys_getitimer(int which, struct itimerval *curr_value) {
++	return ENOSYS;
 +}
 +
 +#endif
