@@ -1,0 +1,28 @@
+name=xterm
+version=390
+revision=1
+tarball_url="https://invisible-mirror.net/archives/xterm/xterm-${version}.tgz"
+tarball_blake2b="0f8f894cac4511ae1eb982ec9a2b94171d3967f061b3dd0c6f1051188a8a19b5bbc49a6e0c39c4d14f19071c750981b149b63bcb1c2ffff9c5a89e78fc5e99e3"
+source_hostdeps="automake autoconf libtool pkg-config"
+source_deps="xorg-util-macros"
+hostdeps="gcc autoconf automake libtool pkg-config"
+deps="core-libs libx11 libxaw libxinerama ncurses xorg-font-misc-misc"
+
+regenerate() {
+    autotools_recursive_regen
+}
+
+build() {
+	autotools_configure \
+        --disable-tcap-fkeys \
+        --disable-tcap-query \
+        --enable-256-color
+
+	make -j${parallelism} SHLIB_LIBS="-ltinfow" CFLAGS="-DHAVE_LIB_XAW=1"
+}
+
+package() {
+	make install DESTDIR=${dest_dir}
+
+    post_package_strip
+}
