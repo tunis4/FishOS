@@ -42,8 +42,8 @@ namespace gfx {
 
     static bool terminal_ready = false;
 
-    Terminal& kernel_terminal() {
-        static Terminal term(&gfx::main_framebuffer);
+    TerminalEmulator& kernel_terminal() {
+        static TerminalEmulator term(&gfx::main_framebuffer);
         return term;
     }
 
@@ -79,14 +79,14 @@ namespace gfx {
         return -1;
     }
 
-    void Terminal::draw_char_at(usize c_x, usize c_y, char c, u32 fg, u32 bg) {
+    void TerminalEmulator::draw_char_at(usize c_x, usize c_y, char c, u32 fg, u32 bg) {
         Font *font = &regular_font;
         if (fg & bold_flag)
             font = &bold_font;
         draw_psf_char(font, c, c_x, c_y, actual_x, actual_y, fg & 0xFFFFFF, bg);
     }
 
-    void Terminal::set_char_at(usize c_x, usize c_y, char c, u32 fg, u32 bg) {
+    void TerminalEmulator::set_char_at(usize c_x, usize c_y, char c, u32 fg, u32 bg) {
         usize index = c_y * width_chars + c_x;
         if (text_buffer[index] == c && fg_color_buffer[index] == fg && bg_color_buffer[index] == bg)
             return;
@@ -97,11 +97,11 @@ namespace gfx {
         cursor_needs_undrawing = false;
     }
 
-    void Terminal::set_char_at_cursor(char c) {
+    void TerminalEmulator::set_char_at_cursor(char c) {
         set_char_at(cursor_x, cursor_y, c, current_fg | (is_bold ? bold_flag : 0), current_bg);
     }
 
-    void Terminal::scroll() {
+    void TerminalEmulator::scroll() {
         for (int y = 0; y < height_chars - 1; y++) {
             for (int x = 0; x < width_chars; x++) {
                 usize index = (y + 1) * width_chars + x;
@@ -115,7 +115,7 @@ namespace gfx {
         cursor_needs_undrawing = true;
     }
 
-    void Terminal::redraw_cursor() {
+    void TerminalEmulator::redraw_cursor() {
         if (cursor_needs_undrawing) {
             gfx::main_framebuffer.fill_rect(
                 old_cursor_x * font_width + actual_x, 
@@ -137,14 +137,14 @@ namespace gfx {
         old_cursor_y = cursor_y;
     }
 
-    void Terminal::move_cursor(int x, int y) {
+    void TerminalEmulator::move_cursor(int x, int y) {
         cursor_x = x;
         cursor_y = y;
         cursor_needs_undrawing = true;
         redraw_cursor();
     }
 
-    Terminal::Terminal(Framebuffer *fb) {
+    TerminalEmulator::TerminalEmulator(Framebuffer *fb) {
         framebuffer = fb;
 
         regular_font.init(_binary_ter_u16n_psf_start);
@@ -199,20 +199,20 @@ namespace gfx {
         redraw_cursor();
     }
 
-    Terminal::~Terminal() {
+    TerminalEmulator::~TerminalEmulator() {
         delete[] text_buffer;
         delete[] fg_color_buffer;
         delete[] bg_color_buffer;
     }
     
-    void Terminal::reset_control_sequence() {
+    void TerminalEmulator::reset_control_sequence() {
         csi_progress = 0;
         csi_arg_index = 0;
         memset(csi_args, 0, sizeof(csi_args));
         csi_question_mark = false;
     }
     
-    void Terminal::apply_control_sequence(char code) {
+    void TerminalEmulator::apply_control_sequence(char code) {
         if (code == 'm') {
             for (int i = 0; i < csi_arg_index + 1; i++) {
                 int n = csi_args[i];
@@ -294,7 +294,7 @@ namespace gfx {
         }
     }
 
-    void Terminal::write_char(char c) {
+    void TerminalEmulator::write_char(char c) {
         klib::InterruptLock interrupt_guard;
         klib::LockGuard guard(lock);
 
@@ -369,7 +369,7 @@ namespace gfx {
 
     // taken from wiki.osdev.org
     // c is a unicode character, cx and cy are cursor position in characters, offx and offy are offsets in pixels
-    void Terminal::draw_psf_char(Font *font, u32 c, u16 cx, u16 cy, u16 offx, u16 offy, u32 fg, u32 bg) {
+    void TerminalEmulator::draw_psf_char(Font *font, u32 c, u16 cx, u16 cy, u16 offx, u16 offy, u32 fg, u32 bg) {
         u32 bytes_per_line = (font->width + 7) / 8;
         u8 *glyph = font->data + (c < font->num_glyph ? c : 0) * font->bytes_per_glyph;
         u64 where = ((cy * font->height + offy) * framebuffer->pitch) + ((cx * font->width + offx) * 4);

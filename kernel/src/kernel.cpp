@@ -179,15 +179,23 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
     create_device_file("/dev/port",     1, 4, true);
     create_device_file("/dev/zero",     1, 5, true);
     create_device_file("/dev/full",     1, 7, true);
+    create_device_file("/dev/tty",      5, 0, true);
     create_device_file("/dev/console",  5, 1, true);
     create_device_file("/dev/fb0",     29, 0, true);
-    auto *entry = vfs::path_to_entry("/dev/input", nullptr);
-    ASSERT(entry->vnode == nullptr);
-    entry->create(vfs::NodeType::DIRECTORY);
+
+    auto *input_dir = vfs::path_to_entry("/dev/input");
+    ASSERT(input_dir->vnode == nullptr);
+    input_dir->create(vfs::NodeType::DIRECTORY);
     if (dev::input::main_keyboard)
         create_device_file("/dev/input/event0", 13, 64, true);
     if (dev::input::main_mouse)
         create_device_file("/dev/input/event1", 13, 65, true);
+
+    auto *pts_dir = vfs::path_to_entry("/dev/pts");
+    ASSERT(pts_dir->vnode == nullptr);
+    pts_dir->create(vfs::NodeType::DIRECTORY);
+    create_device_file("/dev/pts/ptmx", 5, 2, true);
+    create_device_file("/dev/ptmx",     5, 2, true);
 
     auto *init_entry = vfs::path_to_entry("/usr/bin/init");
     if (init_entry->vnode == nullptr)

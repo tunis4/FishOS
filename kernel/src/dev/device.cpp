@@ -1,6 +1,8 @@
 #include <dev/device.hpp>
 #include <dev/simple_char.hpp>
-#include <dev/console.hpp>
+#include <dev/tty/console.hpp>
+#include <dev/tty/pty.hpp>
+#include <dev/tty/tty.hpp>
 #include <dev/input/evdev.hpp>
 #include <klib/vector.hpp>
 #include <gfx/framebuffer.hpp>
@@ -52,7 +54,9 @@ namespace dev {
         CharDevNode::register_node_initializer(make_dev_id(1, 4), "port", [] -> CharDevNode* { return new PortDevNode(); });
         CharDevNode::register_node_initializer(make_dev_id(1, 5), "zero", [] -> CharDevNode* { return new ZeroDevNode(); });
         CharDevNode::register_node_initializer(make_dev_id(1, 7), "full", [] -> CharDevNode* { return new FullDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(5, 1), "console", [] -> CharDevNode* { return new ConsoleDevNode(); });
+        CharDevNode::register_node_initializer(make_dev_id(5, 0), "tty", [] -> CharDevNode* { return new tty::TTYDevNode(); });
+        CharDevNode::register_node_initializer(make_dev_id(5, 1), "console", [] -> CharDevNode* { return new tty::ConsoleDevNode(); });
+        CharDevNode::register_node_initializer(make_dev_id(5, 2), "ptmx", [] -> CharDevNode* { return new tty::PseudoTerminalMultiplexer(); });
         CharDevNode::register_node_initializer(make_dev_id(29, 0), "fb0", [] -> CharDevNode* { return new gfx::FramebufferDevNode(); });
         CharDevNode::register_node_initializer(make_dev_id(13, 64), "event0", [] -> CharDevNode* { return new input::EventDevNode(input::main_keyboard); });
         CharDevNode::register_node_initializer(make_dev_id(13, 65), "event1", [] -> CharDevNode* { return new input::EventDevNode(input::main_mouse); });

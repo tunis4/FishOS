@@ -12,7 +12,7 @@
 #include <klib/algorithm.hpp>
 #include <userland/elf.hpp>
 #include <gfx/framebuffer.hpp>
-#include <dev/console.hpp>
+#include <dev/tty/console.hpp>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/wait.h>
@@ -317,7 +317,7 @@ namespace sched {
         }
 
         auto *console_entry = vfs::path_to_entry("/dev/console");
-        auto *console = (dev::ConsoleDevNode*)console_entry->vnode;
+        auto *console = (dev::tty::ConsoleDevNode*)console_entry->vnode;
         ASSERT(console != nullptr);
         process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_RDONLY), 0)); // stdin
         process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_WRONLY), 0)); // stdout
@@ -326,9 +326,7 @@ namespace sched {
         process->first_free_fdnum = 3;
         process->cwd = vfs::get_root_entry();
 
-        process->controlling_terminal = console;
-        console->foreground_process_group = process;
-        console->session = process;
+        console->set_controlling_terminal(process, console);
 
         char *argv[] = { nullptr };
         char *envp[] = { nullptr };
