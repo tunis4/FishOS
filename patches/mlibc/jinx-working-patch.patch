@@ -398,7 +398,7 @@ index 00000000..f5508a1e
 +}
 diff --git mlibc-clean/sysdeps/fishos/generic/generic.cpp mlibc-workdir/sysdeps/fishos/generic/generic.cpp
 new file mode 100644
-index 00000000..e8a192b4
+index 00000000..307376e6
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/generic/generic.cpp
 @@ -0,0 +1,388 @@
@@ -780,11 +780,11 @@ index 00000000..e8a192b4
 +}
 +
 +int sys_setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value) {
-+	return ENOSYS;
++	return 0;
 +}
 +
 +int sys_getitimer(int which, struct itimerval *curr_value) {
-+	return ENOSYS;
++	return 0;
 +}
 +
 +#endif

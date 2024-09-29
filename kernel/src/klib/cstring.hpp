@@ -22,4 +22,5 @@ namespace klib {
     int strncmp(const char *lhs, const char *rhs, usize count);
     char* strchr(char *str, char c);
     const char* strchr(const char *str, char c);
+    char* strstr(const char *str, const char *substr);
 }

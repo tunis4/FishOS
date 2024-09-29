@@ -138,9 +138,7 @@ namespace dev::tty {
 
             process_input_char(c, [this] (char c) {
                 input_buffer.write_truncate(&c, 1);
-            }, [] (char c) {
-                klib::putchar(c);
-            });
+            }, klib::putchar);
         }
     }
 }

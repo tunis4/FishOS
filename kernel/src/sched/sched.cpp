@@ -303,7 +303,7 @@ namespace sched {
         return 0;
     }
 
-    Process* new_user_process(vfs::VNode *elf_file, bool enqueue) {
+    Process* new_user_process(vfs::VNode *elf_file, bool enqueue, int argc, char **argv) {
         klib::InterruptLock guard;
 
         Process *process = new Process();
@@ -328,9 +328,8 @@ namespace sched {
 
         console->set_controlling_terminal(process, console);
 
-        char *argv[] = { nullptr };
         char *envp[] = { nullptr };
-        auto ret = user_exec(process, elf_file, argv, envp, 0, 0);
+        auto ret = user_exec(process, elf_file, argv, envp, argc, 0);
         ASSERT(ret >= 0);
 
         if (enqueue) {
@@ -501,6 +500,7 @@ namespace sched {
         new_thread->running_on = 0;
 
         new_process->pagemap = old_process->pagemap->fork();
+        new_process->mmap_anon_base = old_process->mmap_anon_base;
 
         memcpy(&new_thread->gpr_state, state, sizeof(cpu::syscall::SyscallState)); // the top part of the syscall state and the interrupt state are the same
         new_thread->gpr_state.cs = u64(cpu::GDTSegment::USER_CODE_64) | 3;
