@@ -28,8 +28,8 @@ ovmf/OVMF.fd:
 distro-base: ./jinx
 	./jinx build base-files kernel init bash binutils bzip2 coreutils diffutils findutils gawk gcc gmp grep gzip less make mpc mpfr nano ncurses pcre2 readline sed tar tzdata xz zlib zstd
 
-distro-xorg: distro-base
-	./jinx build xorg-server xf86-input-evdev xf86-video-fbdev xorg-twm xorg-xeyes
+distro-graphical: distro-base
+	./jinx build xorg-server xf86-input-evdev xf86-video-fbdev jwm xorg-xeyes xterm
 
 $(ISO):
 	rm -f builds/kernel.built builds/kernel.packaged

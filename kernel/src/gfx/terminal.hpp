@@ -103,7 +103,6 @@ namespace gfx {
         void write_char(char c);
     };
 
+    extern bool kernel_terminal_enabled;
     TerminalEmulator& kernel_terminal();
-    bool is_kernel_terminal_ready();
-    void set_kernel_terminal_ready();
 }

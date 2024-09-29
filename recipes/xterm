@@ -6,7 +6,7 @@ tarball_blake2b="0f8f894cac4511ae1eb982ec9a2b94171d3967f061b3dd0c6f1051188a8a19b
 source_hostdeps="automake autoconf libtool pkg-config"
 source_deps="xorg-util-macros"
 hostdeps="gcc autoconf automake libtool pkg-config"
-deps="core-libs libx11 libxaw libxinerama ncurses xorg-font-misc-misc"
+deps="core-libs libx11 libxaw libxinerama ncurses xorg-font-misc-misc xorg-mkfontscale"
 
 regenerate() {
     autotools_recursive_regen

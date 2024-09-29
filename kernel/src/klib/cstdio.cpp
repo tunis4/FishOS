@@ -23,7 +23,7 @@ namespace klib {
         }
         cpu::out<u8>(0x3F8, c);
         
-        if (gfx::is_kernel_terminal_ready()) {
+        if (gfx::kernel_terminal_enabled) {
             gfx::kernel_terminal().write_char(c);
         } else { // very simple early terminal for printing boot errors
             // auto &fb = gfx::main_framebuffer;

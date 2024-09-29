@@ -37,10 +37,10 @@ namespace dev::tty {
             else if (c == '\n' && (termios.c_iflag & INLCR))
                 put('\r');
 
-            if (termios.c_lflag & ECHO) {
-                echo('^');
-                echo(c - 'a' + 'A');
-            }
+            // if ((termios.c_lflag & ECHO) && (termios.c_lflag & ECHOCTL)) {
+            //     echo('^');
+            //     echo(c - 'a' + 'A');
+            // }
 
             if (termios.c_lflag & ISIG) {
                 int signal = -1;

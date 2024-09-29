@@ -86,7 +86,7 @@ namespace dev::tty {
     isize TTYDevNode::open(vfs::FileDescription *fd) {
         auto *controlling_terminal = cpu::get_current_thread()->process->session_leader->controlling_terminal;
         if (!controlling_terminal)
-            return -ENOENT;
+            return -ENXIO;
         fd->vnode = controlling_terminal;
         return 0;
     }

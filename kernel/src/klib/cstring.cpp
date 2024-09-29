@@ -65,4 +65,12 @@ namespace klib {
                 return nullptr;
         return str;
     }
+
+    char* strstr(const char *str, const char *substr) {
+        usize n = strlen(str);
+        while (*str)
+            if (!memcmp(str++, substr, n))
+                return (char*)(str - 1);
+        return nullptr;
+    }
 }

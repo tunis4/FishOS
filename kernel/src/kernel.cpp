@@ -60,6 +60,11 @@ static volatile limine_kernel_address_request kernel_addr_req = {
     .revision = 0
 };
 
+static volatile limine_kernel_file_request kernel_file_req = {
+    .id = LIMINE_KERNEL_FILE_REQUEST,
+    .revision = 0
+};
+
 static volatile limine_module_request module_req = {
     .id = LIMINE_MODULE_REQUEST,
     .revision = 0
@@ -104,6 +109,7 @@ extern "C" [[noreturn]] void _start() {
     gfx::main_framebuffer.from_limine_fb(fb_req.response->framebuffers[0]);
 
     if (!memmap_req.response) panic("Did not receive Limine memmap feature response");
+    if (!kernel_file_req.response) panic("Did not receive Limine kernel file feature response");
     if (!module_req.response) panic("Did not receive Limine module feature response");
     if (!kernel_addr_req.response) panic("Did not receive Limine kernel address feature response");
     if (!rsdp_req.response) panic("Did not receive Limine RSDP feature response");
@@ -122,7 +128,7 @@ extern "C" [[noreturn]] void _start() {
     klib::printf("Allocator: Initialized\n");
 
     gfx::kernel_terminal();
-    gfx::set_kernel_terminal_ready();
+    gfx::kernel_terminal_enabled = true;
     klib::printf("Terminal: Initialized\n");
 
     cpu::smp_init(smp_req.response);
@@ -202,8 +208,16 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
         panic("Failed to find /usr/bin/init");
 
     klib::printf("Loading executable /usr/bin/init\n");
-    sched::Process *init_process = sched::new_user_process(init_entry->vnode, true);
-    
+    sched::Process *init_process;
+    if (klib::strstr(kernel_file_req.response->kernel_file->cmdline, "startwm")) {
+        gfx::kernel_terminal_enabled = false;
+        char *argv[] = { (char*)"/usr/bin/init", (char*)"--startwm", nullptr };
+        init_process = sched::new_user_process(init_entry->vnode, true, 2, argv);
+    } else {
+        char *argv[] = { (char*)"/usr/bin/init", nullptr };
+        init_process = sched::new_user_process(init_entry->vnode, true, 1, argv);
+    }
+
     while (true) {
         if (init_process->get_main_thread()->state == sched::Thread::ZOMBIE) {
             klib::printf("Init process died, rebooting in 5 seconds\n");

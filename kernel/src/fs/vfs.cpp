@@ -634,6 +634,8 @@ namespace vfs {
                 return 0;
             if (sched::Event::await({events, allocated_events}) == -EINTR)
                 return -EINTR;
+            if (timer.fired)
+                return 0;
         }
     }
 

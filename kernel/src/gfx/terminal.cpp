@@ -40,19 +40,11 @@ namespace gfx {
     static constexpr u32 default_fg_color = 0xFCFCFC;
     static constexpr u32 default_bg_color = rgb(24, 24, 24);
 
-    static bool terminal_ready = false;
+    bool kernel_terminal_enabled = false;
 
     TerminalEmulator& kernel_terminal() {
         static TerminalEmulator term(&gfx::main_framebuffer);
         return term;
-    }
-
-    bool is_kernel_terminal_ready() {
-        return terminal_ready;
-    }
-
-    void set_kernel_terminal_ready() {
-        terminal_ready = true;
     }
 
     int Font::init(void *header) {

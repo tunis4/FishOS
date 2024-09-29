@@ -4,27 +4,7 @@
     <!-- The root menu. -->
     <RootMenu onroot="12">
         <Program icon="utilities-terminal" label="Terminal">xterm</Program>
-        <Menu icon="folder" label="Applications">
-            <Program icon="sound" label="Audacious">audacious</Program>
-            <Program icon="calc" label="Calculator">xcalc</Program>
-            <Program icon="web-browser" label="Firefox">firefox</Program>
-            <Program icon="image" label="Gimp">gimp</Program>
-            <Program icon="email" label="Mail">claws-mail</Program>
-            <Program icon="system-file-manager" label="ROX">rox ~</Program>
-        </Menu>
-        <Menu icon="folder" label="Utilities">
-            <Program icon="font" label="Fonts">xfontsel</Program>
-            <Program icon="info" label="Window Properties">
-                xprop | xmessage -file -
-            </Program>
-            <Program icon="info" label="Window Information">
-                xwininfo | xmessage -file -
-            </Program>
-        </Menu>
-        <Separator/>
-        <Program icon="lock" label="Lock">
-           xscreensaver-command -lock
-        </Program>
+        <Program icon="xeyes" label="XEyes">xeyes</Program>
         <Separator/>
         <Restart label="Restart" icon="reload"/>
         <Exit label="Exit" confirm="true" icon="exit"/>
@@ -44,21 +24,20 @@
         <Option>notitle</Option>
     </Group>
 
-    <!-- Tray at the bottom. -->
-    <Tray x="0" y="-1" autohide="off" delay="1000">
-
+    <!-- Tray at the top. -->
+    <Tray x="0" y="0" autohide="off" delay="1000">
         <TrayButton label="JWM">root:1</TrayButton>
-        <Spacer width="2"/>
-        <TrayButton label="_">showdesktop</TrayButton>
         <Spacer width="2"/>
 
         <Pager labeled="true"/>
 
-        <TaskList maxwidth="256"/>
+        <Spacer width="2"/>
+        <TaskList maxwidth="128"/>
 
         <Dock/>
         <Clock format="%l:%M %p"><Button mask="123">exec:xclock</Button></Clock>
-
+        <Spacer width="2"/>
+        <TrayButton label="_">showdesktop</TrayButton>
     </Tray>
 
     <!-- Visual Styles -->
@@ -140,12 +119,12 @@
 
     <!-- Virtual Desktops -->
     <!-- Desktop tags can be contained within Desktops for desktop names. -->
-    <Desktops width="4" height="1">
+    <Desktops width="1" height="1">
         <!-- Default background. Note that a Background tag can be
               contained within a Desktop tag to give a specific background
               for that desktop.
          -->
-        <Background type="solid">#111111</Background>
+        <Background type="image">/root/background.png</Background>
     </Desktops>
 
     <!-- Double click speed (in milliseconds) -->
@@ -155,7 +134,7 @@
     <DoubleClickDelta>2</DoubleClickDelta>
 
     <!-- The focus model (sloppy or click) -->
-    <FocusModel>sloppy</FocusModel>
+    <FocusModel>click</FocusModel>
 
     <!-- The snap mode (none, screen, or border) -->
     <SnapMode distance="10">border</SnapMode>

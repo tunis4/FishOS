@@ -112,7 +112,7 @@ namespace sched {
     void start();
 
     Thread* new_kernel_thread(void (*func)(), bool enqueue);
-    Process* new_user_process(vfs::VNode *elf_file, bool enqueue);
+    Process* new_user_process(vfs::VNode *elf_file, bool enqueue, int argc, char **argv);
 
     void dequeue_thread(Thread *thread, int stop_signal = -1);
     void enqueue_thread(Thread *thread, int signal = -1);
