@@ -6,7 +6,7 @@
 #include <panic.hpp>
 #include <limine.hpp>
 
-namespace mem::pmm {
+namespace pmm {
     Stats stats;
 
     static klib::Spinlock pmm_lock;

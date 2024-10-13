@@ -17,10 +17,10 @@ namespace sched::timer::apic_timer {
     u8 vector = 0;
     static usize previous_interval = 0;
 
-    static void interrupt(u64 vec, cpu::InterruptState *state) {
+    static void interrupt(void *priv, cpu::InterruptState *state) {
         stop();
         update_time(klib::TimeSpec::from_microseconds(previous_interval));
-        usize interval = sched::scheduler_isr(vec, state);
+        usize interval = sched::scheduler_isr(priv, state);
         cpu::interrupts::eoi();
         oneshot(interval);
     }
@@ -42,7 +42,7 @@ namespace sched::timer::apic_timer {
 
     void init() {
         vector = allocate_vector();
-        load_idt_handler(vector, interrupt);
+        set_isr(vector, interrupt, nullptr);
 
         stop();
 

@@ -22,9 +22,9 @@ namespace cpu::interrupts {
         irq_flags[irq] = flags;
     }
 
-    void register_gsi(u32 gsi, bool active_low, bool level_trigger, IDTHandler handler) {
+    void register_gsi(u32 gsi, bool active_low, bool level_trigger, ISR::Handler handler, void *priv) {
         u8 vector = allocate_vector();
-        load_idt_handler(vector, handler);
+        set_isr(vector, handler, priv);
         for (auto &ioapic : ioapics()) {
             if (gsi >= ioapic.gsi_base && gsi < ioapic.gsi_base + ioapic.max_entries) {
                 ioapic.set_redir_entry(gsi, vector, 0, false, active_low, level_trigger, false, LAPIC::read_id()); 
@@ -33,12 +33,12 @@ namespace cpu::interrupts {
         }
     }
 
-    void register_irq(u8 irq, IDTHandler handler) {
+    void register_irq(u8 irq, ISR::Handler handler, void *priv) {
         u32 gsi = irq_to_gsi[irq];
         u16 flags = irq_flags[irq];
         bool active_low = (flags & 0b11) == 0b11;
         bool level_trigger = (flags & 0b1100) == 0b1100;
-        register_gsi(gsi, active_low, level_trigger, handler);
+        register_gsi(gsi, active_low, level_trigger, handler, priv);
     }
 
     void eoi() {

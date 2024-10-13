@@ -3,7 +3,7 @@
 #include <klib/common.hpp>
 #include <klib/lock.hpp>
 #include <gfx/framebuffer.hpp>
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 
 namespace gfx {
     struct Font {

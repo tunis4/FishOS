@@ -1,6 +1,6 @@
 #pragma once
 
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 #include <cpu/cpu.hpp>
 #include <sched/sched.hpp>
 #include <termios.h>

@@ -26,8 +26,9 @@
 #include <userland/elf.hpp>
 #include <fs/vfs.hpp>
 #include <fs/initramfs.hpp>
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 #include <dev/input/input.hpp>
+#include <dev/pci.hpp>
 
 static volatile limine_hhdm_request hhdm_req = {
     .id = LIMINE_HHDM_REQUEST,
@@ -115,16 +116,16 @@ extern "C" [[noreturn]] void _start() {
     if (!rsdp_req.response) panic("Did not receive Limine RSDP feature response");
     if (!smp_req.response) panic("Did not receive Limine SMP feature response");
 
-    mem::pmm::init(hhdm, memmap_req.response);
+    pmm::init(hhdm, memmap_req.response);
     klib::printf("PMM: Initialized\n");
     
     cpu::early_init();
     mem::vmem::early_init();
 
-    mem::vmm::init(hhdm, memmap_req.response, kernel_addr_req.response);
+    vmm::init(hhdm, memmap_req.response, kernel_addr_req.response);
     klib::printf("VMM: Initialized\n");
 
-    mem::bump::init(mem::vmm::heap_base, mem::vmm::heap_size);
+    mem::bump::init(vmm::heap_base, vmm::heap_size);
     klib::printf("Allocator: Initialized\n");
 
     gfx::kernel_terminal();
@@ -170,6 +171,9 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
 [[noreturn]] void kernel_thread() {
     dev::init_devices();
 
+    dev::pci::init();
+    klib::printf("PCI: Initialized\n");
+
     dev::input::init();
     klib::printf("Input: Initialized\n");
     
@@ -188,6 +192,7 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
     create_device_file("/dev/tty",      5, 0, true);
     create_device_file("/dev/console",  5, 1, true);
     create_device_file("/dev/fb0",     29, 0, true);
+    create_device_file("/dev/vda",      8, 0, false);
 
     auto *input_dir = vfs::path_to_entry("/dev/input");
     ASSERT(input_dir->vnode == nullptr);

@@ -2,7 +2,7 @@
 #include <klib/cstdio.hpp>
 #include <klib/cstring.hpp>
 #include <klib/algorithm.hpp>
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 #include <panic.hpp>
 
 namespace initramfs {

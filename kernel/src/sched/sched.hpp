@@ -73,7 +73,7 @@ namespace sched {
         int pid;
         klib::ListHead thread_list;
 
-        mem::vmm::Pagemap *pagemap;
+        vmm::Pagemap *pagemap;
 
         klib::Vector<vfs::FileDescriptor> file_descriptors;
         usize num_file_descriptors; // the actual number
@@ -121,7 +121,7 @@ namespace sched {
     void yield();
 
     void reschedule_self();
-    usize scheduler_isr(u64 vec, cpu::InterruptState *gpr_state);
+    usize scheduler_isr(void *priv, cpu::InterruptState *gpr_state);
 
     [[noreturn]] void syscall_exit(int status);
     isize syscall_fork(cpu::syscall::SyscallState *state);

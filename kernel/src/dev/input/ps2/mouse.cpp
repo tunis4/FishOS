@@ -2,8 +2,6 @@
 #include <klib/cstdio.hpp>
 
 namespace dev::input::ps2 {
-    static Mouse *global_mouse;
-
     static void set_rate(u8 rate) {
         if (!device_command_check(2, DEVICE_CMD_SAMPLE_RATE))
             goto fail;
@@ -56,10 +54,9 @@ namespace dev::input::ps2 {
         if (has_wheel)
             rel_bitmap.set(REL_WHEEL, true);
 
-        global_mouse = this;
-        cpu::interrupts::register_irq(12, [] (u64 vec, cpu::InterruptState *state) {
-            global_mouse->irq();
-        });
+        cpu::interrupts::register_irq(12, [] (void *priv, cpu::InterruptState *state) {
+            ((Mouse*)priv)->irq();
+        }, this);
         flush_out_buffer();
     }
 

@@ -1,8 +1,6 @@
 #include <dev/input/ps2/ps2.hpp>
 
 namespace dev::input::ps2 {
-    static Keyboard *global_keyboard;
-
     Keyboard::Keyboard() {
         name = "PS/2 Keyboard";
         phys = "ps2kbd/input0";
@@ -20,10 +18,9 @@ namespace dev::input::ps2 {
         led_bitmap.set(LED_CAPSL, true);
         led_bitmap.set(LED_SCROLLL, true);
 
-        global_keyboard = this;
-        cpu::interrupts::register_irq(1, [] (u64 vec, cpu::InterruptState *state) {
-            global_keyboard->irq();
-        });
+        cpu::interrupts::register_irq(1, [] (void *priv, cpu::InterruptState *state) {
+            ((Keyboard*)priv)->irq();
+        }, this);
         flush_out_buffer();
     }
 

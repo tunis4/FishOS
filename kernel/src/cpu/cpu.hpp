@@ -6,6 +6,22 @@
 
 namespace sched { struct Thread; }
 
+namespace mmio {
+    template<klib::Integral T>
+    inline T read(uptr addr) {
+        return *(volatile T*)addr;
+    }
+
+    template<klib::Integral T>
+    inline void write(uptr addr, T value) {
+        *(volatile T*)addr = value;
+    }
+
+    inline void sync() {
+        __sync_synchronize();
+    }
+}
+
 namespace cpu {
     void early_init();
     void smp_init(limine_smp_response *smp_res);
@@ -151,9 +167,10 @@ namespace cpu {
         asm volatile("bswap %0" : "=r" (result) : "r" (val));
         return result;
     }
-    
-    template<klib::Integral T> static inline void out(const u16 port, const T val) {
-        panic("cpu::out must be used with u8, u16, or u32");
+
+    template<klib::Integral T>
+    inline void out(const u16 port, const T val) {
+        static_assert(false, "T must be one of u8, u16, u32, u64");
     }
 
     template<>
@@ -170,9 +187,16 @@ namespace cpu {
     inline void out<u32>(const u16 port, const u32 val) {
         asm volatile("outl %0, %1" : : "a" (val), "Nd" (port));
     }
-    
-    template<klib::Integral T> static inline T in(const u16 port) {
-        panic("cpu::in must be used with u8, u16, or u32");
+
+    template<>
+    inline void out<u64>(const u16 port, const u64 val) {
+        out<u32>(port, val & 0xFFFF'FFFF);
+        out<u32>(port + 4, val >> 32);
+    }
+
+    template<klib::Integral T>
+    inline T in(const u16 port) {
+        static_assert(false, "T must be one of u8, u16, u32, u64");
     }
 
     template<>
@@ -193,6 +217,13 @@ namespace cpu {
     inline u32 in<u32>(const u16 port) {
         volatile u32 ret;
         asm volatile("inl %1, %0" : "=a" (ret) : "Nd" (port));
+        return ret;
+    }
+
+    template<>
+    inline u64 in<u64>(const u16 port) {
+        u64 ret = in<u32>(port);
+        ret |= (u64)in<u32>(port + 4) << 32;
         return ret;
     }
 }

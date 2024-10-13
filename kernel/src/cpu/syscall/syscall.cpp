@@ -62,8 +62,8 @@ namespace cpu::syscall {
         __syscall_table[8]  = (void*)&vfs::syscall_seek;
         __syscall_table[9]  = (void*)&vfs::syscall_getcwd;
         __syscall_table[10] = (void*)&vfs::syscall_chdir;
-        __syscall_table[11] = (void*)&mem::vmm::syscall_mmap;
-        __syscall_table[12] = (void*)&mem::vmm::syscall_munmap;
+        __syscall_table[11] = (void*)&vmm::syscall_mmap;
+        __syscall_table[12] = (void*)&vmm::syscall_munmap;
         __syscall_table[13] = (void*)&sched::syscall_fork;
         __syscall_table[14] = (void*)&sched::syscall_execve;
         __syscall_table[15] = (void*)&sched::syscall_sleep;

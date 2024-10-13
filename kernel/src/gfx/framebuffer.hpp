@@ -2,7 +2,7 @@
 
 #include <klib/common.hpp>
 #include <klib/cstring.hpp>
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 #include <limine.hpp>
 
 namespace gfx {

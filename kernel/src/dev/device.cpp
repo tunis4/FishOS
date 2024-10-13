@@ -1,64 +1,78 @@
 #include <dev/device.hpp>
-#include <dev/simple_char.hpp>
-#include <dev/tty/console.hpp>
-#include <dev/tty/pty.hpp>
-#include <dev/tty/tty.hpp>
-#include <dev/input/evdev.hpp>
-#include <klib/vector.hpp>
-#include <gfx/framebuffer.hpp>
+#include <mem/vmm.hpp>
+#include <klib/algorithm.hpp>
+#include <klib/cstring.hpp>
 
 namespace dev {
-    static klib::Vector<CharDevNode::NodeInitializer>& get_char_device_initializers() {
-        static klib::Vector<CharDevNode::NodeInitializer> char_device_initializers;
-        return char_device_initializers;
-    }
-
-    static klib::Vector<BlockDevNode::NodeInitializer>& get_block_device_initializers() {
-        static klib::Vector<BlockDevNode::NodeInitializer> block_device_initializers;
-        return block_device_initializers;
-    }
-
-    void CharDevNode::register_node_initializer(dev_t dev_id, const char *name, CharDevNode* (*create)()) {
-        get_char_device_initializers().push_back(NodeInitializer(dev_id, name, create));
-    }
-
-    CharDevNode* CharDevNode::create_node(dev_t dev_id) {
-        for (NodeInitializer &initializer : get_char_device_initializers()) {
-            if (initializer.dev_id == dev_id) {
-                CharDevNode *device = initializer.create();
-                device->dev_id = dev_id;
-                return device;
-            }
+    isize BlockInterface::read_write_blocks(uptr buffer, usize block_count, usize first_block, Direction direction) {
+        for (usize i = 0; i < block_count; i++) {
+            isize phy = vmm::active_pagemap->get_physical_addr(buffer + i * 0x1000);
+            if (phy < 0)
+                return phy;
+            if (isize err = read_write_block(first_block + i, phy, direction); err < 0)
+                return err;
         }
-        return nullptr;
+        return 0;
     }
 
-    void BlockDevNode::register_node_initializer(dev_t dev_id, const char *name, BlockDevNode* (*create)()) {
-        get_block_device_initializers().push_back(NodeInitializer(dev_id, name, create));
-    }
+    isize BlockInterface::read_write(void *buf, usize count, usize offset, Direction direction) {
+        usize done_count = 0;
+        uptr buf_virt = (uptr)buf;
 
-    BlockDevNode* BlockDevNode::create_node(dev_t dev_id) {
-        for (NodeInitializer &initializer : get_block_device_initializers()) {
-            if (initializer.dev_id == dev_id) {
-                BlockDevNode *device = initializer.create();
-                device->dev_id = dev_id;
-                return device;
-            }
+        // read/write partial block at the beginning
+        if (buf_virt % 0x1000) {
+            pmm::Page *tmp_page = pmm::alloc_page();
+            defer { pmm::free_page(tmp_page); };
+            uptr tmp_phy = tmp_page->pfn * 0x1000;
+
+            if (isize err = read_write_block(offset / 0x1000, tmp_phy, direction); err < 0)
+                return err;
+
+            usize copy_size = klib::min(0x1000 - (buf_virt % 0x1000), count);
+            if (direction == READ)
+                memcpy((void*)buf_virt, (void*)(tmp_phy + vmm::hhdm), copy_size);
+            else
+                memcpy((void*)(tmp_phy + vmm::hhdm), (void*)buf_virt, copy_size);
+            count -= copy_size;
+            buf_virt += copy_size;
+            done_count += copy_size;
+            offset += copy_size;
         }
-        return nullptr;
-    }
 
-    void init_devices() {
-        CharDevNode::register_node_initializer(make_dev_id(1, 1), "mem", [] -> CharDevNode* { return new MemDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(1, 3), "null", [] -> CharDevNode* { return new NullDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(1, 4), "port", [] -> CharDevNode* { return new PortDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(1, 5), "zero", [] -> CharDevNode* { return new ZeroDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(1, 7), "full", [] -> CharDevNode* { return new FullDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(5, 0), "tty", [] -> CharDevNode* { return new tty::TTYDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(5, 1), "console", [] -> CharDevNode* { return new tty::ConsoleDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(5, 2), "ptmx", [] -> CharDevNode* { return new tty::PseudoTerminalMultiplexer(); });
-        CharDevNode::register_node_initializer(make_dev_id(29, 0), "fb0", [] -> CharDevNode* { return new gfx::FramebufferDevNode(); });
-        CharDevNode::register_node_initializer(make_dev_id(13, 64), "event0", [] -> CharDevNode* { return new input::EventDevNode(input::main_keyboard); });
-        CharDevNode::register_node_initializer(make_dev_id(13, 65), "event1", [] -> CharDevNode* { return new input::EventDevNode(input::main_mouse); });
+        if (count == 0)
+            return done_count;
+
+        // read/write full blocks in the middle
+        ASSERT(buf_virt % 0x1000 == 0);
+        usize num_full_blocks = count / 0x1000;
+        if (num_full_blocks > 0) {
+            usize read_size = num_full_blocks * 0x1000;
+            if (isize err = read_write_blocks(buf_virt, num_full_blocks, offset / 0x1000, direction); err < 0)
+                return err;
+            count -= read_size;
+            buf_virt += read_size;
+            done_count += read_size;
+            offset += read_size;
+        }
+        if (count == 0)
+            return done_count;
+
+        // read/write partial block at the end
+        ASSERT(buf_virt % 0x1000 == 0);
+        pmm::Page *tmp_page = pmm::alloc_page();
+        defer { pmm::free_page(tmp_page); };
+        uptr tmp_phy = tmp_page->pfn * 0x1000;
+
+        if (isize err = read_write_block(offset / 0x1000, tmp_phy, direction); err < 0)
+            return err;
+
+        usize copy_size = klib::min(count, (usize)0x1000);
+        if (direction == READ)
+            memcpy((void*)buf_virt, (void*)(tmp_phy + vmm::hhdm), copy_size);
+        else
+            memcpy((void*)(tmp_phy + vmm::hhdm), (void*)buf_virt, copy_size);
+        done_count += copy_size;
+
+        return done_count;
     }
 }
