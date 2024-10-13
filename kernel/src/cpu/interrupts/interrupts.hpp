@@ -10,7 +10,7 @@ namespace cpu::interrupts {
     klib::Vector<LAPIC>& lapics();
 
     void override_irq_source(u8 irq, u32 gsi, u16 flags);
-    void register_gsi(u32 gsi, bool active_low, bool level_trigger, IDTHandler handler);
-    void register_irq(u8 irq, IDTHandler handler);
+    void register_gsi(u32 gsi, bool active_low, bool level_trigger, ISR::Handler handler, void *priv);
+    void register_irq(u8 irq, ISR::Handler handler, void *priv);
     void eoi();
 }

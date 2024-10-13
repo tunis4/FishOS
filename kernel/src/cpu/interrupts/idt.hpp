@@ -23,10 +23,14 @@ namespace cpu::interrupts {
         u32 reserved;
     };
 
-    typedef void (*IDTHandler)(u64 vec, InterruptState* frame);
+    struct ISR {
+        using Handler = void (*)(void *priv, InterruptState* frame);
+
+        Handler handler;
+        void *priv;
+    };
 
     u8 allocate_vector();
-    void load_idt_entry(u8 index, void (*wrapper)(), IDTType type);
-    void load_idt_handler(u8 index, IDTHandler handler);
+    void set_isr(u8 vec, ISR::Handler handler, void *priv);
     void load_idt();
 }

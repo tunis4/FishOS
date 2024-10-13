@@ -21,7 +21,7 @@
 
 #define PAGE_COPY_ON_WRITE (1 << 9)
 
-namespace mem::vmm {
+namespace vmm {
     struct MappedRange {
         enum class Type {
             DIRECT,
@@ -29,6 +29,7 @@ namespace mem::vmm {
         };
 
         klib::ListHead range_list;
+        uptr phy_base; // used if direct
         uptr base;
         uptr length;
         u64 page_flags;
@@ -46,21 +47,23 @@ namespace mem::vmm {
         Pagemap *forked;
 
         void activate();
-        uptr physical_addr(uptr virt);
+        isize get_physical_addr(uptr virt);
 
         void map_page(uptr phy, uptr virt, u64 flags);
         void map_pages(uptr phy, uptr virt, usize size, u64 flags);
         void map_kernel(); // for user pagemaps
 
-        void anon_map(uptr base, usize length, u64 page_flags);
+        void map_range(uptr base, usize length, u64 page_flags, MappedRange::Type type, uptr phy_base = 0);
 
         MappedRange* addr_to_range(uptr virt);
-        bool handle_page_fault(uptr virt);
+        isize handle_page_fault(uptr virt);
 
         Pagemap* fork();
     };
 
     void init(uptr hhdm_base, limine_memmap_response *memmap_res, limine_kernel_address_response *kernel_addr_res);
+
+    uptr virt_alloc(usize length);
 
     extern uptr hhdm;
     extern uptr heap_base;

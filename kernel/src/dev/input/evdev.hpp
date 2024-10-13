@@ -1,7 +1,7 @@
 #pragma once
 
 #include <dev/input/input.hpp>
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 
 namespace dev::input {
     struct EventDevNode final : public CharDevNode {

@@ -55,7 +55,7 @@ namespace acpi {
         void write(u64 offset, T val) {
             switch (this->address_space) {
             case SYSTEM_MEM:
-                *(volatile T*)(addr + offset + mem::vmm::hhdm) = val;
+                *(volatile T*)(addr + offset + vmm::hhdm) = val;
                 break;
             case SYSTEM_IO:
                 cpu::out<T>(addr + offset, val);
@@ -69,7 +69,7 @@ namespace acpi {
         T read(u64 offset) {
             switch (this->address_space) {
             case SYSTEM_MEM:
-                return *(volatile T*)(addr + offset + mem::vmm::hhdm);
+                return *(volatile T*)(addr + offset + vmm::hhdm);
             case SYSTEM_IO:
                 return cpu::in<T>(addr + offset);
             default:

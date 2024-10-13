@@ -25,14 +25,17 @@ namespace klib {
             return m_buffer[index];
         }
 
-        void push_back(T elem) {
+        template<typename... Args>
+        T& emplace_back(Args&&... args) {
             if (m_size == m_capacity) {
                 m_capacity = m_capacity ? m_capacity * 2 : 1;
                 m_buffer = (T*)klib::realloc(m_buffer, m_capacity * sizeof(T));
             }
-            m_buffer[m_size] = elem;
-            m_size++;
+            return *new (m_buffer + m_size++) T(klib::forward<Args>(args)...);
         }
+
+        T& push_back(const T &t) { return emplace_back(t); }
+        T& push_back(T &&t) { return emplace_back(klib::move(t)); }
 
         inline constexpr T* data() const { return m_buffer; }
         inline constexpr usize size() const { return m_size; }

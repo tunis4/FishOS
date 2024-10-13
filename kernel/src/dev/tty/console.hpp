@@ -1,6 +1,6 @@
 #pragma once
 
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 #include <dev/tty/tty.hpp>
 #include <dev/input/input.hpp>
 #include <gfx/terminal.hpp>

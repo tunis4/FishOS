@@ -5,14 +5,11 @@
 #include <panic.hpp>
 #include <limine.hpp>
 
-namespace mem::vmm { struct AnonPage; }
-
-namespace mem::pmm {
+namespace pmm {
     struct Page {
         klib::ListHead list;
         u64 pfn : 40; // page frame number (basically the physical address of the page >> 12)
         bool free : 1; // true if its in the freelist
-        vmm::AnonPage *anon; // if the page is used to store anonymous memory
     };
 
     void init(uptr hhdm, limine_memmap_response *memmap_res);

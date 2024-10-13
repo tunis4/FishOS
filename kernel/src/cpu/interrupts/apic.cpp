@@ -7,20 +7,20 @@
 namespace cpu::interrupts {
     static uptr reg_base;
 
-    static void spurious(u64 vec, InterruptState *state) {
+    static void spurious(void *priv, InterruptState *state) {
         klib::printf("\nAPIC: Spurious interrupt fired\n");
     }
 
     void LAPIC::prepare() {
         uptr phy_base = MSR::read(MSR::IA32_APIC_BASE) & ~(u64)0xFFF;
-        reg_base = phy_base + mem::vmm::hhdm;
-        mem::vmm::kernel_pagemap.map_page(phy_base, reg_base, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_CACHE_DISABLE);
+        reg_base = phy_base + vmm::hhdm;
+        vmm::kernel_pagemap.map_page(phy_base, reg_base, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_CACHE_DISABLE);
     }
 
     void LAPIC::enable() {
         MSR::write(MSR::IA32_APIC_BASE, MSR::read(MSR::IA32_APIC_BASE) | (1 << 11)); // set the global enable flag
         u8 spurious_vector = allocate_vector(); // FIXME: this will not work on some cpus (check section 10.9 of intel sdm vol 3)
-        load_idt_handler(spurious_vector, spurious);
+        set_isr(spurious_vector, spurious, nullptr);
         write_reg(SPURIOUS, spurious_vector | (1 << 8)); // set spurious interrupt and set bit 8 to start getting interrupts
     }
 
@@ -58,7 +58,7 @@ namespace cpu::interrupts {
     }
 
     IOAPIC::IOAPIC(usize id, uptr addr, usize gsi_base) : id(id), gsi_base(gsi_base) {
-        uptr hhdm = mem::vmm::hhdm;
+        uptr hhdm = vmm::hhdm;
         ioregsel = (volatile u32*)(addr + hhdm);
         ioregwin = (volatile u32*)(addr + 0x10 + hhdm);
         max_entries = (read_reg(1) >> 16) + 1;

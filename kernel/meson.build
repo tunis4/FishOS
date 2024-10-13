@@ -68,6 +68,9 @@ source_files = [
   'src/cpu/syscall/syscall_entry.asm',
 
   'src/dev/device.cpp',
+  'src/dev/devnode.cpp',
+  'src/dev/pci.cpp',
+  'src/dev/virtio.cpp',
 
   'src/dev/tty/tty.cpp',
   'src/dev/tty/pty.cpp',

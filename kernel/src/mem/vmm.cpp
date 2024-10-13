@@ -11,13 +11,14 @@
 #include <errno.h>
 #include <sys/mman.h>
 
-namespace mem::vmm {
+namespace vmm {
     uptr hhdm;
     static uptr hhdm_end;
     static uptr kernel_phy_base;
     static uptr kernel_virt_base;
     uptr heap_base;
     usize heap_size;
+    static uptr kernel_virt_alloc_base;
 
     Pagemap kernel_pagemap;
     Pagemap *active_pagemap;
@@ -37,6 +38,7 @@ namespace mem::vmm {
         hhdm_end = klib::align_up<uptr, 0x1000>(hhdm_end);
         heap_base = hhdm_end;
         heap_size = (usize)4 * 1024 * 1024 * 1024; // 4 GiB
+        kernel_virt_alloc_base = heap_base + heap_size;
 
         kernel_pagemap.pml4 = (u64*)(pmm::alloc_pages(1) + hhdm);
         memset(kernel_pagemap.pml4, 0, 0x1000);
@@ -86,6 +88,7 @@ namespace mem::vmm {
         kernel_pagemap.map_pages(kernel_phy_base, kernel_virt_base, kernel_size, PAGE_PRESENT | PAGE_WRITABLE);
         kernel_pagemap.range_list_head.init();
         kernel_hhdm_range = {
+            .phy_base = 0,
             .base = hhdm_base,
             .length = hhdm_end - hhdm_base,
             .page_flags = PAGE_PRESENT | PAGE_WRITABLE,
@@ -149,21 +152,29 @@ namespace mem::vmm {
         active_pagemap = this;
     }
 
-    uptr Pagemap::physical_addr(uptr virt) {
-        u64 *current_table = pml4;
+    isize Pagemap::get_physical_addr(uptr virt) {
+        auto get_actual = [&] -> uptr {
+            u64 *current_table = pml4;
 
-        if (u64 current_entry = current_table[(virt >> 39) & 0x1FF]; current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else return 0;
-        if (u64 current_entry = current_table[(virt >> 30) & 0x1FF]; current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else return 0;
-        if (u64 current_entry = current_table[(virt >> 21) & 0x1FF]; current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else return 0;
+            if (u64 current_entry = current_table[(virt >> 39) & 0x1FF]; current_entry & PAGE_PRESENT) 
+                current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
+            else return 0;
+            if (u64 current_entry = current_table[(virt >> 30) & 0x1FF]; current_entry & PAGE_PRESENT) 
+                current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
+            else return 0;
+            if (u64 current_entry = current_table[(virt >> 21) & 0x1FF]; current_entry & PAGE_PRESENT) 
+                current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
+            else return 0;
 
-        u64 *entry = &current_table[virt >> 12 & 0x1FF];
-        return *entry & 0x000FFFFFFFFFF000;
+            u64 *entry = &current_table[virt >> 12 & 0x1FF];
+            return *entry & 0x000FFFFFFFFFF000;
+        };
+
+        uptr phy = get_actual();
+        if (phy)
+            return phy;
+        else
+            return handle_page_fault(virt);
     }
 
     MappedRange* Pagemap::addr_to_range(uptr virt) {
@@ -184,8 +195,8 @@ namespace mem::vmm {
         return nullptr;
     }
 
-    // returns true if the page fault couldnt be handled
-    bool Pagemap::handle_page_fault(uptr virt) {
+    // returns errno if the page fault couldnt be handled
+    isize Pagemap::handle_page_fault(uptr virt) {
         klib::LockGuard guard(this->lock);
 
         u64 *current_table = this->pml4;
@@ -208,27 +219,28 @@ namespace mem::vmm {
         if (!(*entry & PAGE_PRESENT)) {
             MappedRange *range = addr_to_range(virt);
             if (range == nullptr)
-                return true;
+                return -EFAULT;
             
             switch (range->type) {
             case MappedRange::Type::ANONYMOUS: {
-                // allocate a new page
                 uptr new_page = pmm::alloc_pages(1);
                 memset((void*)(new_page + hhdm), 0, 0x1000);
                 *entry = new_page | range->page_flags;
-                return false;
+                return new_page;
             }
-            case MappedRange::Type::DIRECT:
-                *entry = ((virt - hhdm) & 0x000FFFFFFFFFF000) | range->page_flags;
-                return false;
+            case MappedRange::Type::DIRECT: {
+                uptr phy = virt - range->base + range->phy_base;
+                *entry = (phy & 0x000FFFFFFFFFF000) | range->page_flags;
+                return phy;
+            }
             default:
                 klib::printf("Unknown mapped range type: %#lX\n", u64(range->type));
-                return true;
+                return -EFAULT;
             }
         } else if (*entry & PAGE_COPY_ON_WRITE) {
             klib::printf("cow\n");
-            return true;
-        } else return true;
+            return -EFAULT;
+        } else return -EFAULT;
     }
     
     Pagemap* Pagemap::fork() {
@@ -313,22 +325,30 @@ namespace mem::vmm {
         return forked;
     }
 
-    void Pagemap::anon_map(uptr base, usize length, u64 page_flags) {
+    void Pagemap::map_range(uptr base, usize length, u64 page_flags, MappedRange::Type type, uptr phy_base) {
 #ifndef NDEBUG
         MappedRange *other;
         LIST_FOR_EACH(other, &this->range_list_head, range_list)
             if (base < other->base + other->length && base + length > other->base)
                 panic("New MappedRange { base = %#lX, length = %#lX } collides with existing MappedRange { base = %#lX, length = %#lX }", base, length, other->base, other->length);
 #endif
+        ASSERT(page_flags & PAGE_PRESENT);
 
         MappedRange *range = new MappedRange();
+        range->phy_base = phy_base;
         range->base = base;
         range->length = length;
         range->page_flags = page_flags;
-        range->type = MappedRange::Type::ANONYMOUS;
+        range->type = type;
         this->range_list_head.add(&range->range_list);
     }
-    
+
+    uptr virt_alloc(usize length) {
+        uptr base = kernel_virt_alloc_base;
+        kernel_virt_alloc_base += klib::align_up<usize, 0x1000>(length);
+        return base;
+    }
+
     u64 mmap_prot_to_page_flags(int prot) {
         u64 page_flags = PAGE_PRESENT | PAGE_USER;
         if (prot & PROT_WRITE)
@@ -355,7 +375,7 @@ namespace mem::vmm {
             process->mmap_anon_base += aligned_size;
         }
 
-        process->pagemap->anon_map(base, aligned_size, mmap_prot_to_page_flags(prot));
+        process->pagemap->map_range(base, aligned_size, mmap_prot_to_page_flags(prot), MappedRange::Type::ANONYMOUS);
 
         if (!(flags & MAP_ANONYMOUS)) {
             vfs::FileDescription *description = vfs::get_file_description(fd);
@@ -369,7 +389,7 @@ namespace mem::vmm {
 #endif
         return base;
     }
-    
+
     isize syscall_munmap(void *addr, usize length) {
 #if SYSCALL_TRACE
         klib::printf("munmap(%#lX, %ld)\n", (uptr)addr, length);

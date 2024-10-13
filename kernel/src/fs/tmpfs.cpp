@@ -2,7 +2,7 @@
 #include <klib/algorithm.hpp>
 #include <klib/cstring.hpp>
 #include <klib/cstdlib.hpp>
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 #include <sched/time.hpp>
 #include <panic.hpp>
 #include <errno.h>

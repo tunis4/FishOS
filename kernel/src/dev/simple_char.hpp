@@ -1,6 +1,6 @@
 #pragma once
 
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 #include <cpu/cpu.hpp>
 #include <mem/vmm.hpp>
 #include <klib/cstring.hpp>
@@ -31,12 +31,12 @@ namespace dev {
         MemDevNode() {}
 
         isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override {
-            memcpy(buf, (void*)(mem::vmm::hhdm + offset), count);
+            memcpy(buf, (void*)(vmm::hhdm + offset), count);
             return count;
         }
 
         isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override {
-            memcpy((void*)(mem::vmm::hhdm + offset), buf, count);
+            memcpy((void*)(vmm::hhdm + offset), buf, count);
             return count;
         }
     };

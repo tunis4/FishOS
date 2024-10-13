@@ -11,7 +11,7 @@ namespace sched::timer::pit {
     static bool sleeping = false;
     static usize sleep_ticks = 0;
 
-    static void irq(u64 vec, InterruptState *state) {
+    static void irq(void *priv, InterruptState *state) {
         if (sleeping) sleep_ticks--;
         interrupts::eoi();
     }
@@ -51,6 +51,6 @@ namespace sched::timer::pit {
     }
 
     void init() {
-        interrupts::register_irq(0, irq);
+        interrupts::register_irq(0, irq, nullptr);
     }
 }

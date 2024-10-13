@@ -42,5 +42,5 @@ namespace elf {
     };
 
     // first_free_virt will hold the first virtual address that is free (used for anon mmap)
-    isize load(mem::vmm::Pagemap *pagemap, vfs::VNode *file, uptr load_base, char **ld_path, Auxval *auxv, uptr *first_free_virt);
+    isize load(vmm::Pagemap *pagemap, vfs::VNode *file, uptr load_base, char **ld_path, Auxval *auxv, uptr *first_free_virt);
 }

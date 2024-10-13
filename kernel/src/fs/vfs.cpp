@@ -3,7 +3,7 @@
 #include <fs/pipe.hpp>
 #include <klib/cstdio.hpp>
 #include <klib/algorithm.hpp>
-#include <dev/device.hpp>
+#include <dev/devnode.hpp>
 #include <sched/sched.hpp>
 #include <sched/time.hpp>
 #include <cpu/syscall/syscall.hpp>
@@ -295,7 +295,7 @@ namespace vfs {
         FileDescription *description = get_file_description(fd);
         if (!description)
             return -EBADF;
-        return description->vnode->read(description, buf, count, description->cursor);
+        return description->vnode->read(description, buf, count, offset);
     }
 
     isize syscall_write(int fd, const void *buf, usize count) {
@@ -525,7 +525,7 @@ namespace vfs {
         if (fs)
             fs->stat(vnode, statbuf);
         if (vnode == root->vnode)
-            statbuf->st_blocks = mem::pmm::stats.total_free_pages;
+            statbuf->st_blocks = pmm::stats.total_free_pages;
         return 0;
     }
 

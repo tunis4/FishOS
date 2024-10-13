@@ -7,7 +7,7 @@
 #include <errno.h>
 
 namespace elf {
-    isize load(mem::vmm::Pagemap *pagemap, vfs::VNode *file, uptr load_base, char **ld_path, Auxval *auxv, uptr *first_free_virt) {
+    isize load(vmm::Pagemap *pagemap, vfs::VNode *file, uptr load_base, char **ld_path, Auxval *auxv, uptr *first_free_virt) {
         ASSERT(auxv);
         ASSERT(first_free_virt);
 
@@ -40,11 +40,11 @@ namespace elf {
                 usize total_read_from_file = 0;
                 
                 for (usize i = 0; i < mem_page_count; i++) {
-                    uptr page_phy = mem::pmm::alloc_pages(1);
+                    uptr page_phy = pmm::alloc_pages(1);
                     uptr page_virt = load_base + ph.virt_addr + (i * 0x1000);
                     // klib::printf("mapping %#lX to %#lX\n", page_phy, page_virt);
                     pagemap->map_page(page_phy, page_virt, page_flags);
-                    uptr dst = page_phy + mem::vmm::hhdm;
+                    uptr dst = page_phy + vmm::hhdm;
                     memset((void*)dst, 0, 0x1000);
                     if (i < file_page_count) {
                         uptr offset = ph.offset + (i * 0x1000);

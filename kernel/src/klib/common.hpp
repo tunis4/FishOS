@@ -24,6 +24,10 @@ using uint = unsigned int;
 
 using nullptr_t = decltype(nullptr);
 
+enum Direction {
+    READ, WRITE
+};
+
 namespace klib {
     template<typename T, T v>
     struct IntegralConstant {
@@ -50,8 +54,12 @@ namespace klib {
     template<> struct IsIntegral<i16> : public True {};
     template<> struct IsIntegral<i32> : public True {};
     template<> struct IsIntegral<i64> : public True {};
-    
+
     template<typename T> concept Integral = IsIntegral<T>::value;
+
+    template<typename T, typename U> struct IsSame : False {};
+    template<typename T> struct IsSame<T, T> : True {};
+    template<typename T, typename U> constexpr bool is_same = IsSame<T, U>::value;
 
     template<usize _bits>
     struct __numeric_limits_helper {
@@ -110,8 +118,8 @@ namespace klib {
     }
 
     template<typename T>
-    constexpr auto move(T&& t) {
-        return static_cast<typename RemoveReference<T>::type&&>(t); 
+    constexpr auto move(T &&t) {
+        return static_cast<typename RemoveReference<T>::type&&>(t);
     }
 
     template<typename T>

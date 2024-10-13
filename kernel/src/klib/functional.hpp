@@ -26,8 +26,8 @@ namespace klib {
             }
         };
 
-        Callable *callable;
-        
+        Callable *callable = nullptr;
+
     public:
         Function() = default;
 
@@ -36,6 +36,13 @@ namespace klib {
 
         ~Function() {
             if (callable) delete callable;
+            callable = nullptr;
+        }
+
+        Function(const Function &f) = delete;
+
+        Function(Function &&f) {
+            klib::swap(callable, f.callable);
         }
 
         template<class F>
