@@ -21,7 +21,7 @@ namespace sched {
 
         cpu::InterruptState gpr_state;
         u64 gs_base, fs_base;
-        uptr stack;
+        uptr user_stack;
         uptr kernel_stack;
         uptr saved_user_stack;
         uptr saved_kernel_stack;

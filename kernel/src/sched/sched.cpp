@@ -99,6 +99,9 @@ namespace sched {
         for (usize i = 0; i < file_descriptors.size(); i++)
             if (file_descriptors[i].get_description() != nullptr)
                 file_descriptors[i].close(this, i);
+
+        delete pagemap;
+        // klib::printf("free pages after process cleanup: %lu\n", pmm::stats.total_free_pages);
     }
 
     Thread* Thread::get_from_tid(int tid) {
@@ -129,8 +132,8 @@ namespace sched {
 
         void *kernel_stack = klib::malloc(kernel_stack_size);
         memset(kernel_stack, 0, kernel_stack_size);
-        thread->stack = (uptr)kernel_stack + kernel_stack_size;
-        thread->saved_user_stack = thread->stack;
+        thread->user_stack = (uptr)kernel_stack + kernel_stack_size;
+        thread->saved_user_stack = thread->user_stack;
 
         thread->running_on = 0;
         thread->gpr_state.cs = u64(cpu::GDTSegment::KERNEL_CODE_64);
@@ -139,7 +142,7 @@ namespace sched {
         thread->gpr_state.ss = u64(cpu::GDTSegment::KERNEL_DATA_64);
         thread->gpr_state.rflags = 0x202; // only set the interrupt flag 
         thread->gpr_state.rip = (uptr)func;
-        thread->gpr_state.rsp = thread->stack;
+        thread->gpr_state.rsp = thread->user_stack;
 
         if (enqueue) {
             thread->state = Thread::READY;
@@ -168,9 +171,9 @@ namespace sched {
         gs_base = (uptr)cpu::get_current_cpu();
         fs_base = 0;
 
-        stack = new_stack;
-        gpr_state.rsp = stack;
-        saved_user_stack = stack;
+        user_stack = new_stack;
+        gpr_state.rsp = user_stack;
+        saved_user_stack = user_stack;
     }
 
     static isize user_exec(Process *process, vfs::VNode *elf_file, char **argv, char **envp, int argv_len, int envp_len) {
@@ -185,6 +188,7 @@ namespace sched {
             if (err < 0) {
                 process->pagemap = old_pagemap;
                 process->mmap_anon_base = old_mmap_anon_base;
+                old_pagemap->activate();
             }
         };
 
@@ -192,13 +196,15 @@ namespace sched {
         process->pagemap->pml4 = (u64*)(pmm::alloc_pages(1) + vmm::hhdm);
         memset(process->pagemap->pml4, 0, 0x1000);
         process->pagemap->map_kernel();
-        process->pagemap->range_list_head.init();
+        process->pagemap->range_list.init();
         process->mmap_anon_base = 0;
+
+        process->pagemap->activate();
 
         elf::Auxval auxv {}, ld_auxv {};
         char *ld_path = nullptr;
         defer { if (ld_path) delete[] ld_path; };
-        if (err = elf::load(process->pagemap, elf_file, 0, &ld_path, &auxv, &process->mmap_anon_base); err < 0)
+        if (err = elf::load(process->pagemap, elf_file, 0x400000, &ld_path, &auxv, &process->mmap_anon_base); err < 0)
             return err;
 
         if (ld_path) {
@@ -222,17 +228,12 @@ namespace sched {
 
         process->mmap_anon_base = 0x1000000000; // idk anymore
 
-        thread->stack = process->mmap_anon_base;
-        for (usize i = 0; i < user_stack_size / 0x1000; i++) {
-            uptr page_phy = pmm::alloc_pages(1);
-            memset((void*)(page_phy + vmm::hhdm), 0, 0x1000);
-            process->pagemap->map_page(page_phy, process->mmap_anon_base, PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE);
-            process->mmap_anon_base += 0x1000;
-        }
-        thread->stack += user_stack_size;
+        process->pagemap->map_range(process->mmap_anon_base, user_stack_size, PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE | PAGE_NO_EXECUTE, vmm::MappedRange::Type::ANONYMOUS);
+        process->mmap_anon_base += user_stack_size;
+        thread->user_stack = process->mmap_anon_base;
 
         uptr entry = ld_path ? ld_auxv.at_entry : auxv.at_entry;
-        thread->init_user(entry, thread->stack);
+        thread->init_user(entry, thread->user_stack);
 
         cpu::write_fs_base(thread->fs_base);
 
@@ -240,10 +241,8 @@ namespace sched {
         asm volatile("fldcw %0" :: "m" (default_fcw) : "memory");
         u32 default_mxcsr = 0b1111110000000;
         asm volatile("ldmxcsr %0" :: "m" (default_mxcsr) : "memory");
-
-        process->pagemap->activate();
         
-        uptr *stack = (uptr*)thread->stack;
+        uptr *stack = (uptr*)thread->user_stack;
 
         for (int i = 0; i < envp_len; i++) {
             usize length = klib::strlen(envp[i]);
@@ -269,7 +268,7 @@ namespace sched {
         stack -= 2; stack[0] = AT_PHENT,  stack[1] = auxv.at_phent;
         stack -= 2; stack[0] = AT_PHNUM,  stack[1] = auxv.at_phnum;
 
-        uptr old_stack = thread->stack;
+        uptr old_stack = thread->user_stack;
 
         *(--stack) = 0;
         stack -= envp_len;
@@ -287,10 +286,10 @@ namespace sched {
 
         *(--stack) = argv_len;
 
-        thread->stack = (uptr)stack;
-        thread->gpr_state.rsp = thread->stack;
-        thread->saved_user_stack = thread->stack;
-        cpu::get_current_cpu()->user_stack = thread->stack;
+        thread->user_stack = (uptr)stack;
+        thread->gpr_state.rsp = thread->user_stack;
+        thread->saved_user_stack = thread->user_stack;
+        cpu::get_current_cpu()->user_stack = thread->user_stack;
 
         for (int i = 0; i < (int)process->file_descriptors.size(); i++) {
             auto &file_descriptor = process->file_descriptors[i];
@@ -299,6 +298,8 @@ namespace sched {
         }
 
         memset(process->signal_actions, 0, sizeof(Process::signal_actions));
+
+        delete old_pagemap;
 
         return 0;
     }
@@ -491,6 +492,8 @@ namespace sched {
 #if SYSCALL_TRACE
         klib::printf("fork()\n");
 #endif
+        // klib::printf("free pages before fork: %lu\n", pmm::stats.total_free_pages);
+
         auto *cpu = cpu::get_current_cpu();
         Thread *old_thread = cpu->running_thread;
         Process *old_process = old_thread->process;
@@ -514,7 +517,7 @@ namespace sched {
         new_thread->gs_base = cpu::read_kernel_gs_base(); // is actually the thread's gs base
         new_thread->fs_base = cpu::read_fs_base();
 
-        new_thread->stack = old_thread->stack;
+        new_thread->user_stack = old_thread->user_stack;
         new_thread->saved_user_stack = cpu->user_stack;
 
         void *kernel_stack = klib::malloc(kernel_stack_size);
@@ -527,7 +530,7 @@ namespace sched {
             if (old_file_descriptor.get_description())
                 new_process->file_descriptors.push_back(old_file_descriptor.duplicate());
             else
-                new_process->file_descriptors.push_back(vfs::FileDescriptor());
+                new_process->file_descriptors.emplace_back();
         }
         new_process->num_file_descriptors = old_process->num_file_descriptors;
         new_process->first_free_fdnum = old_process->first_free_fdnum;

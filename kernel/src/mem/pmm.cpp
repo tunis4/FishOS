@@ -49,7 +49,7 @@ namespace pmm {
             usize pfn = pfn_start + num_pages_reserved + i;
             page->pfn = pfn;
             page->free = true;
-            freelist.add_before(&page->list);
+            freelist.add_before(&page->link);
 
             stats.total_free_pages++;
             page++;
@@ -91,7 +91,7 @@ namespace pmm {
         if (freelist.is_empty()) [[unlikely]]
             panic("Out of physical memory");
 
-        Page *page = LIST_ENTRY(freelist.next, Page, list);
+        Page *page = LIST_ENTRY(freelist.next, Page, link);
         page->free = false;
         freelist.next->remove();
         stats.total_free_pages--;
@@ -103,7 +103,7 @@ namespace pmm {
         klib::LockGuard guard(pmm_lock);
 
         page->free = true;
-        freelist.add_before(&page->list);
+        freelist.add_before(&page->link);
         stats.total_free_pages++;
     }
 }

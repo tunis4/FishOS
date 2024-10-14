@@ -7,9 +7,10 @@
 
 namespace pmm {
     struct Page {
-        klib::ListHead list;
-        u64 pfn : 40; // page frame number (basically the physical address of the page >> 12)
+        klib::ListHead link;
         bool free : 1; // true if its in the freelist
+        u64 pfn : 63; // page frame number (basically the physical address of the page >> 12)
+        uptr mapped_addr; // virtual address that it is mapped to if this is anonymous memory
     };
 
     void init(uptr hhdm, limine_memmap_response *memmap_res);
