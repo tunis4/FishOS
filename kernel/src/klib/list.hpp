@@ -8,6 +8,7 @@
 #define LIST_TAIL(list, type, member) LIST_ENTRY((list)->prev, type, member)
 #define LIST_NEXT(elm, member) LIST_ENTRY((elm)->member.next, typeof(*elm), member)
 #define LIST_FOR_EACH(pos, list, member) for (pos = LIST_HEAD(list, typeof(*pos), member); &pos->member != (list); pos = LIST_NEXT(pos, member))
+#define LIST_FOR_EACH_SAFE(pos, list, member) decltype(pos) next; for (pos = LIST_HEAD(list, typeof(*pos), member), next = LIST_NEXT(pos, member); &pos->member != (list); pos = next, next = LIST_NEXT(next, member))
 
 namespace klib {
     struct ListHead {

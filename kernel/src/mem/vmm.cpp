@@ -70,7 +70,7 @@ namespace vmm {
         }
 
         klib::printf("VMM: Kernel base addresses | phy: %#lX, virt: %#lX\n", kernel_phy_base, kernel_virt_base);
-        
+
 /*
         klib::printf("VMM: Kernel PMRs:\n");
         for (usize i = 0; i < tag_pmrs->entries; i++) {
@@ -86,23 +86,43 @@ namespace vmm {
 */
 
         kernel_pagemap.map_pages(kernel_phy_base, kernel_virt_base, kernel_size, PAGE_PRESENT | PAGE_WRITABLE);
-        kernel_pagemap.range_list_head.init();
-        kernel_hhdm_range = {
-            .phy_base = 0,
-            .base = hhdm_base,
-            .length = hhdm_end - hhdm_base,
-            .page_flags = PAGE_PRESENT | PAGE_WRITABLE,
-            .type = MappedRange::Type::DIRECT
-        };
-        kernel_pagemap.range_list_head.add(&kernel_hhdm_range.range_list);
-        kernel_heap_range = { 
-            .base = heap_base,
-            .length = heap_size,
-            .page_flags = PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE,
-            .type = MappedRange::Type::ANONYMOUS
-        };
-        kernel_pagemap.range_list_head.add(&kernel_heap_range.range_list);
+
+        new (&kernel_hhdm_range) MappedRange(0, hhdm_base, hhdm_end - hhdm_base, PAGE_PRESENT | PAGE_WRITABLE, MappedRange::Type::DIRECT);
+        new (&kernel_heap_range) MappedRange(0, heap_base, heap_size, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE, MappedRange::Type::ANONYMOUS);
+
+        kernel_pagemap.range_list.init();
+        kernel_pagemap.range_list.add(&kernel_hhdm_range.range_link);
+        kernel_pagemap.range_list.add(&kernel_heap_range.range_link);
         kernel_pagemap.activate();
+    }
+
+    MappedRange::MappedRange(uptr phy_base, uptr base, usize length, u64 page_flags, Type type) 
+        : phy_base(phy_base), base(base), length(length), page_flags(page_flags), type(type)
+    {
+        page_list.init();
+    }
+
+    MappedRange::~MappedRange() {
+        range_link.remove();
+
+        pmm::Page *page;
+        LIST_FOR_EACH_SAFE(page, &page_list, link)
+            pmm::free_page(page);
+    }
+
+    void MappedRange::print() {
+        klib::printf("%#lX-%#lX ", base, base + length);
+        klib::printf("r%c%c", (page_flags & PAGE_WRITABLE) ? 'w' : '-', !(page_flags & PAGE_NO_EXECUTE) ? 'x' : '-');
+        if (type == Type::ANONYMOUS)
+            klib::printf(" anonymous\n");
+        else if (type == Type::DIRECT)
+            klib::printf(" direct to %#lX\n", phy_base);
+    }
+
+    Pagemap::~Pagemap() {
+        MappedRange *range;
+        LIST_FOR_EACH_SAFE(range, &range_list, range_link)
+            delete range;
     }
 
     static u64* create_next_page_table(u64 *current_entry) {
@@ -180,7 +200,7 @@ namespace vmm {
     MappedRange* Pagemap::addr_to_range(uptr virt) {
         // first check current pagemap
         MappedRange *range;
-        LIST_FOR_EACH(range, &this->range_list_head, range_list)
+        LIST_FOR_EACH(range, &this->range_list, range_link)
             if (virt >= range->base && virt < range->base + range->length)
                 return range;
 
@@ -188,7 +208,7 @@ namespace vmm {
             return nullptr;
 
         // otherwise also check kernel pagemap
-        LIST_FOR_EACH(range, &kernel_pagemap.range_list_head, range_list)
+        LIST_FOR_EACH(range, &kernel_pagemap.range_list, range_link)
             if (virt >= range->base && virt < range->base + range->length)
                 return range;
 
@@ -200,7 +220,7 @@ namespace vmm {
         klib::LockGuard guard(this->lock);
 
         u64 *current_table = this->pml4;
-        
+
         u64 *current_entry = &current_table[(virt >> 39) & 0x1FF];
         if (*current_entry & PAGE_PRESENT) 
             current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
@@ -220,13 +240,17 @@ namespace vmm {
             MappedRange *range = addr_to_range(virt);
             if (range == nullptr)
                 return -EFAULT;
-            
+
             switch (range->type) {
             case MappedRange::Type::ANONYMOUS: {
-                uptr new_page = pmm::alloc_pages(1);
-                memset((void*)(new_page + hhdm), 0, 0x1000);
-                *entry = new_page | range->page_flags;
-                return new_page;
+                pmm::Page *new_page = pmm::alloc_page();
+                new_page->mapped_addr = klib::align_down<uptr, 0x1000>(virt);
+                range->page_list.add_before(&new_page->link);
+
+                uptr phy = new_page->pfn * 0x1000;
+                memset((void*)(phy + hhdm), 0, 0x1000);
+                *entry = phy | range->page_flags;
+                return phy;
             }
             case MappedRange::Type::DIRECT: {
                 uptr phy = virt - range->base + range->phy_base;
@@ -251,6 +275,7 @@ namespace vmm {
         memcpy(forked->pml4, this->pml4, 0x1000);
         for (usize i = 256; i < 512; i++) // higher half
             forked->pml4[i] = this->pml4[i];
+
         for (usize i = 0; i < 256; i++) { // lower half
             // if (this->pml4[i] & PAGE_WRITABLE)
             //     this->pml4[i] = (this->pml4[i] & ~u64(PAGE_WRITABLE)) | PAGE_COPY_ON_WRITE;
@@ -293,33 +318,35 @@ namespace vmm {
                     forked_pml2[i] = new_page | (pml2[i] & ~0x000FFFFFFFFFF000);
                     u64 *forked_pml1 = (u64*)(new_page + hhdm);
 
-                    for (usize i = 0; i < 512; i++) {
-                        if (!(pml1[i] & PAGE_PRESENT)) {
+                    for (usize i = 0; i < 512; i++)
+                        if (!(pml1[i] & PAGE_PRESENT))
                             forked_pml1[i] = pml1[i];
-                            continue;
-                        }
-
-                        u64 *page = (u64*)((pml1[i] & 0x000FFFFFFFFFF000) + hhdm);
-
-                        uptr new_page = pmm::alloc_pages(1);
-                        memset((void*)(new_page + hhdm), 0, 0x1000);
-                        forked_pml1[i] = new_page | (pml1[i] & ~0x000FFFFFFFFFF000);
-                        u64 *forked_page = (u64*)(new_page + hhdm);
-
-                        memcpy(forked_page, page, 0x1000);
-                    }
                 }
             }
         }
 
-        forked->range_list_head.init();
-        klib::ListHead *current_head = &this->range_list_head;
-        while (current_head->next != &this->range_list_head) {
-            current_head = current_head->next;
-            MappedRange *range = LIST_ENTRY(current_head, MappedRange, range_list);
-            MappedRange *new_range = new MappedRange;
-            memcpy(new_range, range, sizeof(MappedRange));
-            forked->range_list_head.add_before(&new_range->range_list);
+        forked->range_list.init();
+        MappedRange *old_range;
+        LIST_FOR_EACH(old_range, &range_list, range_link) {
+            // old_range->print();
+            MappedRange *new_range = new MappedRange(old_range->phy_base, old_range->base, old_range->length, old_range->page_flags, old_range->type);
+            forked->range_list.add_before(&new_range->range_link);
+
+            ASSERT(new_range->type == MappedRange::Type::ANONYMOUS);
+
+            pmm::Page *old_page;
+            LIST_FOR_EACH(old_page, &old_range->page_list, link) {
+                pmm::Page *new_page = pmm::alloc_page();
+                new_page->mapped_addr = old_page->mapped_addr;
+                new_range->page_list.add_before(&new_page->link);
+
+                uptr new_phy = new_page->pfn * 0x1000;
+                uptr old_phy = old_page->pfn * 0x1000;
+
+                // klib::printf("%#lX\n", old_page->mapped_addr);
+                forked->map_page(new_phy, new_page->mapped_addr, new_range->page_flags);
+                memcpy((void*)(new_phy + hhdm), (void*)(old_phy + hhdm), 0x1000);
+            }
         }
 
         return forked;
@@ -328,19 +355,14 @@ namespace vmm {
     void Pagemap::map_range(uptr base, usize length, u64 page_flags, MappedRange::Type type, uptr phy_base) {
 #ifndef NDEBUG
         MappedRange *other;
-        LIST_FOR_EACH(other, &this->range_list_head, range_list)
+        LIST_FOR_EACH(other, &this->range_list, range_link)
             if (base < other->base + other->length && base + length > other->base)
                 panic("New MappedRange { base = %#lX, length = %#lX } collides with existing MappedRange { base = %#lX, length = %#lX }", base, length, other->base, other->length);
 #endif
         ASSERT(page_flags & PAGE_PRESENT);
 
-        MappedRange *range = new MappedRange();
-        range->phy_base = phy_base;
-        range->base = base;
-        range->length = length;
-        range->page_flags = page_flags;
-        range->type = type;
-        this->range_list_head.add(&range->range_list);
+        MappedRange *range = new MappedRange(phy_base, base, length, page_flags, type);
+        this->range_list.add(&range->range_link);
     }
 
     uptr virt_alloc(usize length) {
@@ -394,7 +416,16 @@ namespace vmm {
 #if SYSCALL_TRACE
         klib::printf("munmap(%#lX, %ld)\n", (uptr)addr, length);
 #endif
-        // klib::printf("munmap() is a stub\n");
+        sched::Process *process = cpu::get_current_thread()->process;
+
+        MappedRange *range = process->pagemap->addr_to_range((uptr)addr);
+        if (range->length != length) {
+            klib::printf("unsupported partial munmap (unmap length: %#lX, mapped length: %#lX)\n", length, range->length);
+            return 0;
+        }
+
+        process->pagemap->map_pages(0, range->base, range->length, 0);
+        delete range;
         return 0;
     }
 }

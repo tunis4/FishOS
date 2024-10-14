@@ -28,23 +28,33 @@ namespace vmm {
             ANONYMOUS
         };
 
-        klib::ListHead range_list;
+        klib::ListHead range_link;
+        klib::ListHead page_list;
         uptr phy_base; // used if direct
         uptr base;
-        uptr length;
+        usize length;
         u64 page_flags;
         Type type;
+
+        MappedRange() {}
+        MappedRange(uptr phy_base, uptr base, usize length, u64 page_flags, Type type);
+        ~MappedRange();
+
+        void print();
     };
 
     struct Pagemap {
         u64 *pml4;
         klib::Spinlock lock;
-        klib::ListHead range_list_head;
+        klib::ListHead range_list;
 
         // if this pagemap hasnt been forked, then this will be set to nullptr.
         // if this pagemap has been forked, then this will point to the fork.
         // if this pagemap is the fork, then this will point to itself.
         Pagemap *forked;
+
+        Pagemap() {}
+        ~Pagemap();
 
         void activate();
         isize get_physical_addr(uptr virt);

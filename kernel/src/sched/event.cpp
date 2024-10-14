@@ -58,11 +58,10 @@ namespace sched {
             return 0;
         }
 
-        for (klib::ListHead *current = listener_list_head.next; current != &listener_list_head;) {
-            auto *listener = LIST_ENTRY(current, Event::Listener, listener_link);
+        Event::Listener *listener;
+        LIST_FOR_EACH_SAFE(listener, &listener_list_head, listener_link) {
             listener->thread->which_event = listener->which;
             enqueue_thread(listener->thread);
-            current = current->next;
             listener->listener_link.remove();
         }
 

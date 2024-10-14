@@ -36,15 +36,17 @@ namespace elf {
                 usize misalign = ph.virt_addr & 0xFFF;
                 usize mem_page_count = (ph.mem_size + misalign + 0x1000 - 1) / 0x1000;
                 usize file_page_count = (ph.file_size + misalign + 0x1000 - 1) / 0x1000;
-
                 usize total_read_from_file = 0;
-                
+
+                uptr base = load_base + ph.virt_addr;
+                uptr aligned_base = klib::align_down<usize, 0x1000>(base);
+
+                // klib::printf("mapping %#lX length %#lX\n", aligned_base, mem_page_count * 0x1000);
+                pagemap->map_range(aligned_base, mem_page_count * 0x1000, page_flags, vmm::MappedRange::Type::ANONYMOUS);
+
                 for (usize i = 0; i < mem_page_count; i++) {
-                    uptr page_phy = pmm::alloc_pages(1);
-                    uptr page_virt = load_base + ph.virt_addr + (i * 0x1000);
-                    // klib::printf("mapping %#lX to %#lX\n", page_phy, page_virt);
-                    pagemap->map_page(page_phy, page_virt, page_flags);
-                    uptr dst = page_phy + vmm::hhdm;
+                    uptr page_virt = base + (i * 0x1000);
+                    uptr dst = aligned_base + (i * 0x1000);
                     memset((void*)dst, 0, 0x1000);
                     if (i < file_page_count) {
                         uptr offset = ph.offset + (i * 0x1000);
