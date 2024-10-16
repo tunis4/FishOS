@@ -21,9 +21,11 @@ namespace tmpfs {
             entry->vnode->type = new_node_type;
         }
         entry->vnode->fs = this;
-        entry->vnode->creation_time = sched::realtime_clock;
-        entry->vnode->modification_time = sched::realtime_clock;
-        entry->vnode->access_time = sched::realtime_clock;
+
+        auto realtime_clock = sched::get_clock(CLOCK_REALTIME);
+        entry->vnode->creation_time = realtime_clock;
+        entry->vnode->modification_time = realtime_clock;
+        entry->vnode->access_time = realtime_clock;
 
         auto *node_data = new NodeData();
         node_data->inode_num = last_inode_num++;

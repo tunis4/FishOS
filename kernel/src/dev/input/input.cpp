@@ -49,7 +49,7 @@ namespace dev::input {
     
     void InputDevice::push_event(u16 type, u16 code, u32 value) {
         InputEvent input_event;
-        input_event.time = sched::realtime_clock.to_timeval();
+        input_event.time = sched::get_clock(CLOCK_REALTIME).to_timeval();
         input_event.type = type;
         input_event.code = code;
         input_event.value = value;
@@ -66,7 +66,7 @@ namespace dev::input {
             if (listener->event_buffer.free_count() < num_events) {
                 listener->event_buffer.truncate(listener->event_buffer.data_count());
                 InputEvent input_event;
-                input_event.time = sched::realtime_clock.to_timeval();
+                input_event.time = sched::get_clock(CLOCK_REALTIME).to_timeval();
                 input_event.type = EV_SYN;
                 input_event.code = SYN_DROPPED;
                 input_event.value = 0;

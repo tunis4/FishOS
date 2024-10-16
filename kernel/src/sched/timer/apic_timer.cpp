@@ -15,7 +15,7 @@ using namespace cpu::interrupts;
 namespace sched::timer::apic_timer {
     usize freq = 0;
     u8 vector = 0;
-    static usize previous_interval = 0;
+    usize previous_interval = 0;
 
     static void interrupt(void *priv, cpu::InterruptState *state) {
         stop();
@@ -38,6 +38,17 @@ namespace sched::timer::apic_timer {
         LAPIC::set_vector(LAPIC::LVT_TIMER, vector, false, false, false, false);
         LAPIC::write_reg(LAPIC::TIMER_DIVIDE, 0b1011); // divide by 1
         LAPIC::write_reg(LAPIC::TIMER_INITIAL, ticks);
+    }
+
+    u64 µs_since_interrupt() {
+        u64 initial_ticks = LAPIC::read_reg(LAPIC::TIMER_INITIAL);
+        u64 current_ticks = LAPIC::read_reg(LAPIC::TIMER_CURRENT);
+        return ((initial_ticks - current_ticks) * 1000000) / freq;
+    }
+
+    void self_interrupt() {
+        previous_interval = µs_since_interrupt();
+        LAPIC::send_ipi(cpu::get_current_cpu()->lapic_id, vector);
     }
 
     void init() {
