@@ -1,4 +1,5 @@
 #include <sched/time.hpp>
+#include <sched/timer/apic_timer.hpp>
 #include <cpu/syscall/syscall.hpp>
 #include <klib/lock.hpp>
 #include <klib/cstdio.hpp>
@@ -8,8 +9,8 @@ namespace sched {
     static klib::ListHead armed_timers_list;
     static klib::Spinlock armed_timers_lock;
 
-    klib::TimeSpec monotonic_clock;
-    klib::TimeSpec realtime_clock;
+    static klib::TimeSpec monotonic_clock;
+    static klib::TimeSpec realtime_clock;
 
     void Timer::arm() {
         klib::InterruptLock interrupt_guard;
@@ -32,18 +33,28 @@ namespace sched {
     }
 
     void update_time(klib::TimeSpec interval) {
-        monotonic_clock.add(interval);
-        realtime_clock.add(interval);
+        monotonic_clock += interval;
+        realtime_clock += interval;
 
         Timer *timer;
         LIST_FOR_EACH(timer, &armed_timers_list, armed_timers_link) {
             if (timer->fired)
                 continue;
 
-            if (timer->remaining.subtract(interval)) {
+            timer->remaining -= interval;
+            if (timer->remaining.is_zero()) {
                 timer->fired = true;
                 timer->event.trigger();
             }
+        }
+    }
+
+    klib::TimeSpec get_clock(clockid_t clock_id) {
+        auto current_interval = klib::TimeSpec::from_microseconds(sched::timer::apic_timer::µs_since_interrupt());
+        switch (clock_id) {
+        case CLOCK_MONOTONIC: return monotonic_clock + current_interval;
+        case CLOCK_REALTIME: return realtime_clock + current_interval;
+        default: return { 0, 0 };
         }
     }
 
@@ -67,12 +78,9 @@ namespace sched {
 #if SYSCALL_TRACE
         klib::printf("clock_gettime(%d, %#lX)\n", clock_id, (uptr)time);
 #endif
-        if (clock_id == CLOCK_REALTIME)
-            *time = realtime_clock;
-        else if (clock_id == CLOCK_MONOTONIC)
-            *time = monotonic_clock;
-        else
+        if (clock_id != CLOCK_REALTIME && clock_id != CLOCK_MONOTONIC)
             return -EINVAL;
+        *time = get_clock(clock_id);
         return 0;
     }
 

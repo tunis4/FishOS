@@ -6,9 +6,6 @@
 #include <limine.hpp>
 
 namespace sched {
-    extern klib::TimeSpec monotonic_clock;
-    extern klib::TimeSpec realtime_clock;
-
     struct Timer {
         klib::TimeSpec remaining;
         Event event;
@@ -29,6 +26,8 @@ namespace sched {
 
     void init_time(limine_boot_time_response *boot_time_res);
     void update_time(klib::TimeSpec interval);
+
+    klib::TimeSpec get_clock(clockid_t clock_id);
 
     isize syscall_sleep(const klib::TimeSpec *duration, klib::TimeSpec *remaining);
     isize syscall_clock_gettime(clockid_t clock_id, klib::TimeSpec *time);

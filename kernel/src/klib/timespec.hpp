@@ -18,39 +18,50 @@ namespace klib {
             return seconds == 0 && nanoseconds == 0;
         }
 
-        void add(const TimeSpec &interval) {
-            if (this->nanoseconds + interval.nanoseconds > 999'999'999) {
-                i64 diff = (this->nanoseconds - interval.nanoseconds) - 1'000'000'000;
+        TimeSpec& operator +=(const TimeSpec &rhs) {
+            if (this->nanoseconds + rhs.nanoseconds > 999'999'999) {
+                i64 diff = (this->nanoseconds - rhs.nanoseconds) - 1'000'000'000;
                 this->nanoseconds = diff;
                 this->seconds++;
             } else {
-                this->nanoseconds += interval.nanoseconds;
+                this->nanoseconds += rhs.nanoseconds;
             }
-            this->seconds += interval.seconds;
+            this->seconds += rhs.seconds;
+            return *this;
         }
 
-        bool subtract(const TimeSpec &interval) {
-            if (interval.nanoseconds > this->nanoseconds) {
-                i64 diff = interval.nanoseconds - this->nanoseconds;
+        TimeSpec& operator -=(const TimeSpec &rhs) {
+            if (rhs.nanoseconds > this->nanoseconds) {
+                i64 diff = rhs.nanoseconds - this->nanoseconds;
                 this->nanoseconds = 999'999'999 - diff;
                 if (this->seconds == 0) {
                     this->seconds = 0;
                     this->nanoseconds = 0;
-                    return true;
+                    return *this;
                 }
                 this->seconds--;
             } else {
-                this->nanoseconds -= interval.nanoseconds;
+                this->nanoseconds -= rhs.nanoseconds;
             }
-            if (interval.seconds > this->seconds) {
+            if (rhs.seconds > this->seconds) {
                 this->seconds = 0;
                 this->nanoseconds = 0;
-                return true;
+                return *this;
             }
-            this->seconds -= interval.seconds;
-            if (this->is_zero())
-                return true;
-            return false;
+            this->seconds -= rhs.seconds;
+            return *this;
         }
     };
+
+    inline TimeSpec operator +(const TimeSpec &lhs, const TimeSpec &rhs) {
+        TimeSpec ret = lhs;
+        ret += rhs;
+        return ret;
+    }
+
+    inline TimeSpec operator -(const TimeSpec &lhs, const TimeSpec &rhs) {
+        TimeSpec ret = lhs;
+        ret -= rhs;
+        return ret;
+    }
 }

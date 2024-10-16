@@ -403,7 +403,6 @@ namespace sched {
 
     void yield() {
         klib::InterruptLock guard;
-        timer::apic_timer::stop();
 
         Thread *thread = cpu::get_current_thread();
         thread->yield_await.lock();
@@ -416,7 +415,7 @@ namespace sched {
     }
 
     void reschedule_self() {
-        cpu::interrupts::LAPIC::send_ipi(cpu::get_current_cpu()->lapic_id, timer::apic_timer::vector);
+        timer::apic_timer::self_interrupt();
     }
 
     usize scheduler_isr(void *priv, cpu::InterruptState *gpr_state) {
