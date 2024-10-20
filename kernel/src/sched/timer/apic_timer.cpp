@@ -27,7 +27,7 @@ namespace sched::timer::apic_timer {
 
     void stop() {
         LAPIC::write_reg(LAPIC::TIMER_INITIAL, 0);
-        LAPIC::mask_vector(LAPIC::LVT_TIMER);
+        // LAPIC::mask_vector(LAPIC::LVT_TIMER);
     }
 
     void oneshot(usize µs) {
@@ -35,7 +35,7 @@ namespace sched::timer::apic_timer {
         previous_interval = µs;
 
         u32 ticks = (µs * freq) / 1000000;
-        LAPIC::set_vector(LAPIC::LVT_TIMER, vector, false, false, false, false);
+        // LAPIC::set_vector(LAPIC::LVT_TIMER, vector, false, false, false, false);
         LAPIC::write_reg(LAPIC::TIMER_DIVIDE, 0b1011); // divide by 1
         LAPIC::write_reg(LAPIC::TIMER_INITIAL, ticks);
     }
@@ -74,8 +74,10 @@ namespace sched::timer::apic_timer {
         freq = (0xFFFFFFFF - LAPIC::read_reg(LAPIC::TIMER_CURRENT)) * 10 * 16; 
 
         stop();
-        
+
         klib::printf("APIC Timer: Freq: %ld\n", freq);
+
+        LAPIC::unmask_vector(LAPIC::LVT_TIMER);
 
         // LAPIC::write_reg(LAPIC::TIMER_DIVIDE, 3); // divide by 16
         // LAPIC::write_reg(LAPIC::TIMER_INITIAL, freq * 4 / 16); // try to sleep 4 seconds with apic timer

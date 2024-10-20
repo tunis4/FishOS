@@ -81,12 +81,13 @@ namespace cpu::interrupts {
 
     static void exception_handler(void *priv, InterruptState *state) {
         u8 vec = (u64)priv;
-        const char *err_name = vec < 19 ? exception_strings[vec] : "Reserved";
+        const char *err_name = vec < 31 ? exception_strings[vec] : "Not an exception";
         if ((state->cs & 3) == 3) {
             sched::Thread *thread = cpu::get_current_thread();
-            klib::printf("Thread (tid: %d) crashed\n", thread->tid);
+            klib::printf("Thread crashed due to %s (%#X) (tid: %d, process name: \"%s\")\n", err_name, vec, thread->tid, thread->process->name);
             if (state->err) klib::printf("Error code: %#04lX\n", state->err);
             if (vec == 0xE) klib::printf("CR2=%016lX\n", cpu::read_cr2());
+            if (vec == 0x13) klib::printf("MXCSR=%08X\n", cpu::read_mxcsr());
             klib::printf("RIP=%016lX RFLAGS=%016lX\n", state->rip, state->rflags);
             klib::printf("FS=%016lX GS=%016lX KERNEL_GS=%016lX\n", cpu::read_fs_base(), cpu::read_gs_base(), cpu::read_kernel_gs_base());
             // auto *task = cpu::get_current_thread();

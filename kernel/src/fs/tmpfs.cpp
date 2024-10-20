@@ -58,7 +58,7 @@ namespace tmpfs {
                 continue;
             }
             usize name_len = klib::strlen(child->name);
-            usize entry_len = klib::align_up<usize, 8>(sizeof(vfs::Dirent) + name_len + 1);
+            usize entry_len = klib::align_up(sizeof(vfs::Dirent) + name_len + 1, 8);
             if (count + entry_len > max_size)
                 break;
             auto dirent = (vfs::Dirent*)((uptr)buf + count);
