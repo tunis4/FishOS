@@ -79,6 +79,8 @@ namespace sched {
     Thread::~Thread() {
         get_thread_table()[tid] = nullptr;
         thread_link.remove();
+        if (extended_state)
+            klib::free(extended_state);
     }
 
     Process::Process() {
@@ -171,6 +173,26 @@ namespace sched {
         gs_base = (uptr)cpu::get_current_cpu();
         fs_base = 0;
 
+        extended_state = klib::aligned_alloc(cpu::extended_state_size, 64);
+        memset(extended_state, 0, cpu::extended_state_size);
+        {
+            klib::InterruptLock interrupt_guard;
+            Thread *active_thread = cpu::get_current_thread();
+
+            if (active_thread->extended_state)
+                cpu::save_extended_state(active_thread->extended_state);
+            cpu::restore_extended_state(extended_state);
+
+            u16 default_fcw = 0b1100111111;
+            asm volatile("fldcw %0" : : "m" (default_fcw) : "memory");
+            u32 default_mxcsr = 0b1111110000000;
+            asm volatile("ldmxcsr %0" : : "m" (default_mxcsr) : "memory");
+
+            cpu::save_extended_state(extended_state);
+            if (active_thread->extended_state)
+                cpu::restore_extended_state(active_thread->extended_state);
+        }
+
         user_stack = new_stack;
         gpr_state.rsp = user_stack;
         saved_user_stack = user_stack;
@@ -237,11 +259,6 @@ namespace sched {
 
         cpu::write_fs_base(thread->fs_base);
 
-        u16 default_fcw = 0b1100111111;
-        asm volatile("fldcw %0" :: "m" (default_fcw) : "memory");
-        u32 default_mxcsr = 0b1111110000000;
-        asm volatile("ldmxcsr %0" :: "m" (default_mxcsr) : "memory");
-        
         uptr *stack = (uptr*)thread->user_stack;
 
         for (int i = 0; i < envp_len; i++) {
@@ -256,7 +273,7 @@ namespace sched {
             memcpy(stack, argv[i], length);
         }
         
-        stack = (uptr*)klib::align_down<uptr, 16>((uptr)stack);
+        stack = (uptr*)klib::align_down((uptr)stack, 16);
         if (((argv_len + envp_len + 1) & 1) != 0) {
             stack--;
         }
@@ -427,6 +444,8 @@ namespace sched {
 
             // copy the saved registers into the current thread
             memcpy(&current_thread->gpr_state, gpr_state, sizeof(cpu::InterruptState));
+            if (current_thread->extended_state)
+                cpu::save_extended_state(current_thread->extended_state);
             current_thread->gs_base = cpu::read_kernel_gs_base(); // this was the regular gs base before the swapgs of the interrupt (if it was a kernel thread then the kernel gs base is the same anyway)
             current_thread->fs_base = cpu::read_fs_base();
             current_thread->saved_user_stack = cpu->user_stack;
@@ -475,6 +494,8 @@ namespace sched {
 
         // load the new thread's registers
         memcpy(gpr_state, &current_thread->gpr_state, sizeof(cpu::InterruptState));
+        if (current_thread->extended_state)
+            cpu::restore_extended_state(current_thread->extended_state);
 
         return 1000000 / sched_freq;
     }
@@ -515,6 +536,8 @@ namespace sched {
         new_thread->gpr_state.rax = 0; // return value of the syscall for the new thread
         new_thread->gs_base = cpu::read_kernel_gs_base(); // is actually the thread's gs base
         new_thread->fs_base = cpu::read_fs_base();
+        new_thread->extended_state = klib::aligned_alloc(cpu::extended_state_size, 64);
+        memcpy(new_thread->extended_state, old_thread->extended_state, cpu::extended_state_size);
 
         new_thread->user_stack = old_thread->user_stack;
         new_thread->saved_user_stack = cpu->user_stack;
@@ -565,6 +588,9 @@ namespace sched {
                 return -EACCES;
             elf_file = entry->vnode;
         }
+
+        // FIXME: rollback if execve fails
+        klib::strncpy(process->name, path, sizeof(process->name));
 
         int envp_len;
         for (envp_len = 0; envp[envp_len] != NULL; envp_len++) {}

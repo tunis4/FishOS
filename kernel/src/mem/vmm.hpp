@@ -19,8 +19,6 @@
 #define PAGE_WRITE_COMBINING (PAGE_ATTRIBUTE_TABLE | PAGE_CACHE_DISABLE)
 #define PAGE_NO_EXECUTE ((u64)1 << 63)
 
-#define PAGE_COPY_ON_WRITE (1 << 9)
-
 namespace vmm {
     struct MappedRange {
         enum class Type {

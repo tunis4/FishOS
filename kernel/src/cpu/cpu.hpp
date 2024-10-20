@@ -27,6 +27,10 @@ namespace cpu {
     void smp_init(limine_smp_response *smp_res);
     void init(limine_smp_info *info);
 
+    extern usize extended_state_size;
+    extern void (*save_extended_state)(void *storage);
+    extern void (*restore_extended_state)(void *storage);
+
     struct [[gnu::packed]] TSS {
         u32 reserved0;
         u64 rsp0, rsp1, rsp2;
@@ -76,7 +80,7 @@ namespace cpu {
             asm volatile("rdmsr" : "=a" (lo), "=d" (hi) : "c" (msr));
             return ((u64)hi << 32) | lo;
         }
-        
+
         static inline void write(R msr, u64 val) {
             volatile u32 lo = val & 0xFFFFFFFF;
             volatile u32 hi = val >> 32;
@@ -84,44 +88,56 @@ namespace cpu {
         }
     };
 
-    static inline void cpuid(u32 leaf, u32 subleaf, u32 *eax, u32 *ebx, u32 *ecx, u32 *edx) {
+    static inline void raw_cpuid(u32 leaf, u32 subleaf, u32 *eax, u32 *ebx, u32 *ecx, u32 *edx) {
         asm volatile("cpuid" : "=a" (*eax), "=b" (*ebx), "=c" (*ecx), "=d" (*edx) : "a" (leaf), "c" (subleaf));
+    }
+
+    static inline bool cpuid(u32 leaf, u32 subleaf, u32 *eax, u32 *ebx, u32 *ecx, u32 *edx) {
+        raw_cpuid(leaf & 0x80000000, 0, eax, ebx, ecx, edx);
+        if (leaf > *eax) // max cpuid
+            return false;
+        raw_cpuid(leaf, subleaf, eax, ebx, ecx, edx);
+        return true;
     }
     
     static inline void write_cr0(u64 cr0) {
-        asm volatile("mov %0, %%cr0" : : "r" (cr0));
+        asm volatile("mov %0, %%cr0" : : "r" (cr0) : "memory");
     }
     
     static inline void write_cr3(u64 cr3) {
-        asm volatile("mov %0, %%cr3" : : "r" (cr3));
+        asm volatile("mov %0, %%cr3" : : "r" (cr3) : "memory");
     }
 
     static inline void write_cr4(u64 cr4) {
-        asm volatile("mov %0, %%cr4" : : "r" (cr4));
+        asm volatile("mov %0, %%cr4" : : "r" (cr4) : "memory");
     }
 
     static inline u64 read_cr0() {
         volatile u64 cr0;
-        asm volatile("mov %%cr0, %0" : "=r" (cr0));
+        asm volatile("mov %%cr0, %0" : "=r" (cr0) : : "memory");
         return cr0;
     }
 
     static inline u64 read_cr2() {
         volatile u64 cr2;
-        asm volatile("mov %%cr2, %0" : "=r" (cr2));
+        asm volatile("mov %%cr2, %0" : "=r" (cr2) : : "memory");
         return cr2;
     }
 
     static inline u64 read_cr3() {
         volatile u64 cr3;
-        asm volatile("mov %%cr3, %0" : "=r" (cr3));
+        asm volatile("mov %%cr3, %0" : "=r" (cr3) : : "memory");
         return cr3;
     }
 
     static inline u64 read_cr4() {
         volatile u64 cr4;
-        asm volatile("mov %%cr4, %0" : "=r" (cr4));
+        asm volatile("mov %%cr4, %0" : "=r" (cr4) : : "memory");
         return cr4;
+    }
+
+    static inline void write_xcr(u32 reg, u64 value) {
+        asm volatile("xsetbv" : : "a" (u32(value)), "d" (u32(value >> 32)), "c" (reg) : "memory");
     }
 
     static inline CPU* get_current_cpu() {
@@ -156,6 +172,12 @@ namespace cpu {
     static inline u64 read_fs_base() { return MSR::read(MSR::IA32_FS_BASE); }
     static inline void write_fs_base(u64 fs) { MSR::write(MSR::IA32_FS_BASE, fs); }
     static inline u64 read_tsc() { return MSR::read(MSR::IA32_TIME_STAMP_COUNTER); }
+
+    static inline u32 read_mxcsr() {
+        u32 mxcsr;
+        asm volatile("stmxcsr %0" : : "m" (mxcsr) : "memory");
+        return mxcsr;
+    }
 
     static inline void invlpg(void *m) {
         asm volatile("invlpg (%0)" : : "r" (m) : "memory");

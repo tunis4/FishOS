@@ -59,7 +59,7 @@ namespace initramfs {
                 }
             }
 
-            current = (USTARHeader*)((uptr)current + 512 + klib::align_up<usize, 512>(size));
+            current = (USTARHeader*)((uptr)current + 512 + klib::align_up(size, 512));
             if ((uptr)current >= (uptr)file_addr + file_size)
                 break;
         }

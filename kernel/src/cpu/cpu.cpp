@@ -4,6 +4,7 @@
 #include <mem/vmm.hpp>
 #include <mem/pmm.hpp>
 #include <klib/cstdio.hpp>
+#include <sched/sched.hpp>
 
 namespace cpu {
     extern "C" void __syscall_entry();
@@ -12,6 +13,30 @@ namespace cpu {
     const usize stack_size = 0x1000; // FIXME
 
     static CPU bsp_cpu;
+
+    usize extended_state_size = 0;
+    void (*save_extended_state)(void *storage) = nullptr;
+    void (*restore_extended_state)(void *storage) = nullptr;
+
+    static void xsave(void *storage) {
+        asm volatile("xsave (%0)" : : "r" (storage), "a" (0xFFFFFFFF), "d" (0xFFFFFFFF) : "memory");
+    }
+
+    static void xsaveopt(void *storage) {
+        asm volatile("xsaveopt (%0)" : : "r" (storage), "a" (0xFFFFFFFF), "d" (0xFFFFFFFF) : "memory");
+    }
+
+    static void xrstor(void *storage) {
+        asm volatile("xrstor (%0)" : : "r" (storage), "a" (0xFFFFFFFF), "d" (0xFFFFFFFF) : "memory");
+    }
+
+    static void fxsave(void *storage) {
+        asm volatile("fxsave (%0)" : : "r" (storage) : "memory");
+    }
+
+    static void fxrstor(void *storage) {
+        asm volatile("fxrstor (%0)" : : "r" (storage) : "memory");
+    }
 
     void smp_init(limine_smp_response *smp_res) {
         klib::printf("CPU: SMP | x2APIC: %s\n", (smp_res->flags & 1) ? "yes" : "no");
@@ -74,14 +99,60 @@ namespace cpu {
         cr0 &= ~(u64(1) << 2);
         cr0 |= u64(1) << 1;
         write_cr0(cr0);
-        
+
         u64 cr4 = read_cr4();
-        cr4 |= u64(3) << 9;
+        cr4 |= u64(3) << 9; // enable fxsave
         write_cr4(cr4);
-        
+
+        u32 eax, ebx, ecx, edx;
+        if (cpuid(1, 0, &eax, &ebx, &ecx, &edx)) {
+            // check global pages support
+            if (edx & (1 << 13)) {
+                cr4 |= u64(1) << 7; // enable global pages
+                write_cr4(cr4);
+            }
+
+            // check xsave support
+            if (ecx & (1 << 26)) {
+                // enable xsave, xgetbv and xsetbv
+                cr4 |= 1 << 18;
+                write_cr4(cr4);
+
+                u64 xcr0 = 0;
+                xcr0 |= 1 << 0; // save x87 state
+                xcr0 |= 1 << 1; // save SSE state
+                if (ecx & (1 << 28))
+                    xcr0 |= 1 << 2; // save AVX state
+                if (cpuid(7, 0, &eax, &ebx, &ecx, &edx) && (ebx & (1 << 16))) {
+                    // save AVX-512 state
+                    xcr0 |= 1 << 5;
+                    xcr0 |= 1 << 6;
+                    xcr0 |= 1 << 7;
+                }
+                write_xcr(0, xcr0);
+
+                // get xsave state size
+                if (cpuid(0xD, 0, &eax, &ebx, &ecx, &edx)) {
+                    extended_state_size = ecx;
+                    if (cpuid(0xD, 1, &eax, &ebx, &ecx, &edx) && (eax & (1 << 0)))
+                        save_extended_state = xsaveopt;
+                    else
+                        save_extended_state = xsave;
+                    restore_extended_state = xrstor;
+                }
+            }
+        }
+
+        // fallback to fxsave
+        if (!save_extended_state) {
+            extended_state_size = 512;
+            save_extended_state = fxsave;
+            restore_extended_state = fxrstor;
+        }
+
         // enable syscall/sysret instructions
         MSR::write(MSR::IA32_EFER, MSR::read(MSR::IA32_EFER) | 1);
-        
+
         // make sure interrupt flag gets reset on syscall entry
         MSR::write(MSR::IA32_FMASK, MSR::read(MSR::IA32_FMASK) | 0x200);
 

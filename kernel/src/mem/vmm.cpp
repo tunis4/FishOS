@@ -35,7 +35,7 @@ namespace vmm {
             if (hhdm_base + entry->base + entry->length > hhdm_end)
                 hhdm_end = hhdm_base + entry->base + entry->length;
         }
-        hhdm_end = klib::align_up<uptr, 0x1000>(hhdm_end);
+        hhdm_end = klib::align_up(hhdm_end, 0x1000);
         heap_base = hhdm_end;
         heap_size = (usize)4 * 1024 * 1024 * 1024; // 4 GiB
         kernel_virt_alloc_base = heap_base + heap_size;
@@ -49,7 +49,7 @@ namespace vmm {
         for (usize e = 0; e < memmap_res->entry_count; e++) {
             auto *entry = memmap_res->entries[e];
             const char *entry_name;
-            u64 flags = PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE;
+            u64 flags = PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_GLOBAL;
 
             switch (entry->type) {
             case LIMINE_MEMMAP_USABLE: entry_name = "Usable"; break;
@@ -85,10 +85,10 @@ namespace vmm {
         }
 */
 
-        kernel_pagemap.map_pages(kernel_phy_base, kernel_virt_base, kernel_size, PAGE_PRESENT | PAGE_WRITABLE);
+        kernel_pagemap.map_pages(kernel_phy_base, kernel_virt_base, kernel_size, PAGE_PRESENT | PAGE_WRITABLE | PAGE_GLOBAL);
 
-        new (&kernel_hhdm_range) MappedRange(0, hhdm_base, hhdm_end - hhdm_base, PAGE_PRESENT | PAGE_WRITABLE, MappedRange::Type::DIRECT);
-        new (&kernel_heap_range) MappedRange(0, heap_base, heap_size, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE, MappedRange::Type::ANONYMOUS);
+        new (&kernel_hhdm_range) MappedRange(0, hhdm_base, hhdm_end - hhdm_base, PAGE_PRESENT | PAGE_WRITABLE | PAGE_GLOBAL, MappedRange::Type::DIRECT);
+        new (&kernel_heap_range) MappedRange(0, heap_base, heap_size, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_GLOBAL, MappedRange::Type::ANONYMOUS);
 
         kernel_pagemap.range_list.init();
         kernel_pagemap.range_list.add(&kernel_hhdm_range.range_link);
@@ -155,7 +155,7 @@ namespace vmm {
     }
 
     void Pagemap::map_pages(uptr phy, uptr virt, usize size, u64 flags) {
-        usize num_pages = klib::align_up<usize, 0x1000>(size) / 0x1000;
+        usize num_pages = klib::align_up(size, 0x1000) / 0x1000;
         // klib::printf("Mapping %ld pages phy %#lX virt %#lX end %#lX\n", num_pages, phy, virt, phy + num_pages * 0x1000);
         for (usize i = 0; i < num_pages; i++)
             map_page(phy + (i * 0x1000), virt + (i * 0x1000), flags);
@@ -244,7 +244,7 @@ namespace vmm {
             switch (range->type) {
             case MappedRange::Type::ANONYMOUS: {
                 pmm::Page *new_page = pmm::alloc_page();
-                new_page->mapped_addr = klib::align_down<uptr, 0x1000>(virt);
+                new_page->mapped_addr = klib::align_down(virt, 0x1000);
                 range->page_list.add_before(&new_page->link);
 
                 uptr phy = new_page->pfn * 0x1000;
@@ -261,10 +261,8 @@ namespace vmm {
                 klib::printf("Unknown mapped range type: %#lX\n", u64(range->type));
                 return -EFAULT;
             }
-        } else if (*entry & PAGE_COPY_ON_WRITE) {
-            klib::printf("cow\n");
-            return -EFAULT;
-        } else return -EFAULT;
+        }
+        return -EFAULT;
     }
     
     Pagemap* Pagemap::fork() {
@@ -367,7 +365,7 @@ namespace vmm {
 
     uptr virt_alloc(usize length) {
         uptr base = kernel_virt_alloc_base;
-        kernel_virt_alloc_base += klib::align_up<usize, 0x1000>(length);
+        kernel_virt_alloc_base += klib::align_up(length, 0x1000);
         return base;
     }
 
@@ -388,10 +386,10 @@ namespace vmm {
         sched::Process *process = cpu::get_current_thread()->process;
 
         uptr base;
-        usize aligned_size = klib::align_up<usize, 0x1000>(length);
+        usize aligned_size = klib::align_up(length, 0x1000);
         if (flags & MAP_FIXED) {
             base = (uptr)addr;
-            process->mmap_anon_base = klib::align_up<uptr, 0x1000>(klib::max(process->mmap_anon_base, base + aligned_size));
+            process->mmap_anon_base = klib::align_up(klib::max(process->mmap_anon_base, base + aligned_size), 0x1000);
         } else {
             base = process->mmap_anon_base;
             process->mmap_anon_base += aligned_size;

@@ -39,7 +39,7 @@ namespace elf {
                 usize total_read_from_file = 0;
 
                 uptr base = load_base + ph.virt_addr;
-                uptr aligned_base = klib::align_down<usize, 0x1000>(base);
+                uptr aligned_base = klib::align_down(base, 0x1000);
 
                 // klib::printf("mapping %#lX length %#lX\n", aligned_base, mem_page_count * 0x1000);
                 pagemap->map_range(aligned_base, mem_page_count * 0x1000, page_flags, vmm::MappedRange::Type::ANONYMOUS);
@@ -84,7 +84,7 @@ namespace elf {
             }
         }
 
-        *first_free_virt = klib::align_up<uptr, 0x1000>(*first_free_virt);
+        *first_free_virt = klib::align_up(*first_free_virt, 0x1000);
 
         auxv->at_entry = load_base + header.entry_addr;
         auxv->at_phent = header.ph_entry_size;

@@ -5,6 +5,7 @@
     <RootMenu onroot="12">
         <Program icon="utilities-terminal" label="Terminal">xterm</Program>
         <Program icon="xeyes" label="XEyes">xeyes</Program>
+        <Program icon="doom" label="Doom">doomgeneric -iwad /usr/share/games/doom/DOOM1.WAD</Program>
         <Separator/>
         <Restart label="Restart" icon="reload"/>
         <Exit label="Exit" confirm="true" icon="exit"/>

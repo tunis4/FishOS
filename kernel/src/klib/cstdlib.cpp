@@ -9,6 +9,10 @@ namespace klib {
         return ptr;
     }
 
+    void* aligned_alloc(usize size, usize alignment) {
+        return mem::bump::allocate(size, alignment);
+    }
+
     void* calloc(usize size) {
         auto ptr = mem::bump::allocate(size);
         memset(ptr, 0, size);

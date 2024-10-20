@@ -15,15 +15,15 @@ namespace mem::bump {
         total_size = size;
     }
 
-    void* allocate(usize size) {
+    void* allocate(usize size, usize alignment) {
         klib::InterruptLock interrupt_guard;
         klib::LockGuard guard(alloc_lock);
 
         if (size != 0) {
-            void *ret = (void*)(alloc_base + alloc_ptr);
-            alloc_ptr += klib::align_up<usize, alignment>(size);
+            uptr ret = klib::align_up(alloc_base + alloc_ptr, alignment);
+            alloc_ptr = (ret - alloc_base) + size;
             ASSERT(alloc_ptr < total_size);
-            return ret;
+            return (void*)ret;
         }
 
         return nullptr;

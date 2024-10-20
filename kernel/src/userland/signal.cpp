@@ -66,7 +66,7 @@ namespace userland {
         sched::to_ucontext(state, ucontext);
         ucontext->uc_mcontext.gregs[REG_RSP] = old_rsp;
 
-        state->rsp = klib::align_down<uptr, 16>(state->rsp) - 8; // stack alignment
+        state->rsp = klib::align_down(state->rsp, 16) - 8; // stack alignment
 
         uptr handler = (uptr)action->handler;
         if (action->flags & SA_SIGINFO)

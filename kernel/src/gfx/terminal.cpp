@@ -325,7 +325,7 @@ namespace gfx {
             } else cursor_needs_undrawing = false;
             return;
         case '\t':
-            cursor_x = klib::align_up<usize, 8>(cursor_x + 1);
+            cursor_x = klib::align_up(cursor_x + 1, 8);
             break;
         case '\r':
             cursor_x = 0;

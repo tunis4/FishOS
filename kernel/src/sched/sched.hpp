@@ -20,6 +20,7 @@ namespace sched {
         klib::ListHead thread_link;
 
         cpu::InterruptState gpr_state;
+        void *extended_state = nullptr;
         u64 gs_base, fs_base;
         uptr user_stack;
         uptr kernel_stack;
@@ -96,6 +97,8 @@ namespace sched {
 
         Process *process_group_leader;
         klib::ListHead process_group_list;
+
+        char name[64] = {};
 
         Process();
         ~Process();
