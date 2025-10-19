@@ -2,23 +2,27 @@
 #include <klib/algorithm.hpp>
 #include <klib/cstring.hpp>
 #include <klib/cstdlib.hpp>
+#include <klib/cstdio.hpp>
 #include <dev/devnode.hpp>
+#include <sched/sched.hpp>
 #include <sched/time.hpp>
+#include <cpu/cpu.hpp>
 #include <panic.hpp>
+#include <sys/mman.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 
 namespace tmpfs {
     void Filesystem::lookup(vfs::Entry *entry) {
-        return; // if it didnt exist in the cache then it doesnt exist
+        // if it didnt exist in the cache then it doesnt exist
     }
 
     void Filesystem::create(vfs::Entry *entry, vfs::NodeType new_node_type) {
         if (!entry->vnode) {
             ASSERT(new_node_type != vfs::NodeType::NONE);
             entry->vnode = new Node();
-            entry->vnode->type = new_node_type;
+            entry->vnode->node_type = new_node_type;
         }
         entry->vnode->fs = this;
 
@@ -27,20 +31,19 @@ namespace tmpfs {
         entry->vnode->modification_time = realtime_clock;
         entry->vnode->access_time = realtime_clock;
 
-        auto *node_data = new NodeData();
+        auto *node_data = (NodeData*)klib::calloc(sizeof(NodeData));
         node_data->inode_num = last_inode_num++;
 
         entry->vnode->fs_data = node_data;
     }
     
     void Filesystem::remove(vfs::Entry *entry) {
-        delete (NodeData*)(entry->vnode->fs_data);
     }
 
     void Filesystem::stat(vfs::VNode *vnode, struct stat *statbuf) {
         NodeData *node_data = (NodeData*)vnode->fs_data;
         statbuf->st_ino = node_data->inode_num;
-        if (vnode->type == vfs::NodeType::DIRECTORY)
+        if (vnode->node_type == vfs::NodeType::DIRECTORY)
             statbuf->st_size = sizeof(vfs::Entry);
         else
             statbuf->st_size = node_data->size;
@@ -65,7 +68,7 @@ namespace tmpfs {
             dirent->d_ino = ((NodeData*)child->vnode->fs_data)->inode_num;
             dirent->d_off = i;
             dirent->d_reclen = entry_len;
-            dirent->d_type_from_node_type(child->vnode->type);
+            dirent->d_type_from_node_type(child->vnode->node_type);
             memcpy(dirent->d_name, child->name, name_len + 1);
             count += entry_len;
             i++;
@@ -87,7 +90,7 @@ namespace tmpfs {
         NodeData *node_data = (NodeData*)fs_data;
         if (count == 0) [[unlikely]] return 0;
         if (offset + count > node_data->size) {
-            node_data->size = offset + count;
+            node_data->size = klib::max(offset + count, node_data->size * 2);
             node_data->storage = (u8*)klib::realloc(node_data->storage, node_data->size);
         }
         memcpy(node_data->storage + offset, buf, count);
@@ -114,6 +117,16 @@ namespace tmpfs {
         default:
             return -EINVAL;
         }
+    }
+
+    isize Node::mmap(vfs::FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) {
+        if ((flags & MAP_SHARED) && (prot & PROT_WRITE))
+            klib::printf("tmpfs/mmap: MAP_SHARED with PROT_WRITE not supported\n");
+
+        sched::Process *process = cpu::get_current_thread()->process;
+        u64 page_flags = mem::mmap_prot_to_page_flags(prot);
+        process->pagemap->map_file(addr, length, page_flags, fd, offset);
+        return addr;
     }
 
     vfs::Filesystem* Driver::mount(vfs::Entry *mount_entry) {

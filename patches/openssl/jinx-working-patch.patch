@@ -1,8 +1,8 @@
 diff --git openssl-clean/Configurations/10-main.conf openssl-workdir/Configurations/10-main.conf
-index f815a09..d403653 100644
+index f815a09..820fa24 100644
 --- openssl-clean/Configurations/10-main.conf
 +++ openssl-workdir/Configurations/10-main.conf
-@@ -925,6 +925,40 @@ my %targets = (
+@@ -925,6 +925,49 @@ my %targets = (
          ranlib           => "true",
      },
  
@@ -26,17 +26,26 @@ index f815a09..d403653 100644
 +        shared_extension => ".so.\$(SHLIB_VERSION_NUMBER)",
 +    },
 +
-+    # This breaks the usual configuration naming convention but it's more
++    # These break the usual configuration naming convention but it's more
 +    # convenient for us, since it matches the target triples
-+
-+    "x86_64-pc-fishos-mlibc" => {
++    "x86_64-fishos-mlibc" => {
 +        inherit_from     => [ "fishos-generic64", asm("x86_64_asm") ],
 +        perlasm_scheme   => "elf",
 +
 +        # Configure doesn't want to play nice and passes "--cross-compile-suffix"
 +        # on to the GCC invocation
-+        CC               => "x86_64-pc-fishos-mlibc-gcc",
-+        CXX              => "x86_64-pc-fishos-mlibc-g++",
++        CC               => "x86_64-fishos-mlibc-gcc",
++        CXX              => "x86_64-fishos-mlibc-g++",
++
++    },
++    "riscv64-fishos-mlibc" => {
++        inherit_from     => [ "fishos-generic64", asm("riscv64_asm") ],
++        perlasm_scheme   => "elf",
++
++        # Configure doesn't want to play nice and passes "--cross-compile-suffix"
++        # on to the GCC invocation
++        CC               => "riscv64-fishos-mlibc-gcc",
++        CXX              => "riscv64-fishos-mlibc-g++",
 +
 +    },
 +
@@ -82,23 +91,32 @@ index 89bf184..7432224 100644
  #define MAX_MISALIGNMENT 63
  #define MAX_ECDH_SIZE   256
  #define MISALIGN        64
-diff --git openssl-clean/crypto/mem_sec.c openssl-workdir/crypto/mem_sec.c
-index 222c786..edb5192 100644
---- openssl-clean/crypto/mem_sec.c
-+++ openssl-workdir/crypto/mem_sec.c
-@@ -492,8 +492,10 @@ static int sh_init(size_t size, int minsize)
-         ret = 2;
- #endif
- #ifdef MADV_DONTDUMP
-+/*
-     if (madvise(sh.arena, sh.arena_size, MADV_DONTDUMP) < 0)
-         ret = 2;
-+*/
- #endif
+diff --git openssl-clean/crypto/conf/conf_def.c openssl-workdir/crypto/conf/conf_def.c
+index 31c02cc..4e4ca4e 100644
+--- openssl-clean/crypto/conf/conf_def.c
++++ openssl-workdir/crypto/conf/conf_def.c
+@@ -11,6 +11,7 @@
  
-     return ret;
+ #include <stdio.h>
+ #include <string.h>
++#include <strings.h>
+ #include "internal/cryptlib.h"
+ #include "internal/o_dir.h"
+ #include <openssl/lhash.h>
+diff --git openssl-clean/test/bntest.c openssl-workdir/test/bntest.c
+index 9273e86..c4a1683 100644
+--- openssl-clean/test/bntest.c
++++ openssl-workdir/test/bntest.c
+@@ -10,6 +10,7 @@
+ #include <errno.h>
+ #include <stdio.h>
+ #include <string.h>
++#include <strings.h>
+ #include <ctype.h>
+ 
+ #include <openssl/bn.h>
 diff --git openssl-clean/test/rsa_complex.c openssl-workdir/test/rsa_complex.c
-index fac5812..a23670d 100644
+index fac5812..5e82ef3 100644
 --- openssl-clean/test/rsa_complex.c
 +++ openssl-workdir/test/rsa_complex.c
 @@ -14,7 +14,9 @@
@@ -112,3 +130,27 @@ index fac5812..a23670d 100644
  # endif
  #endif
  #include <openssl/rsa.h>
+diff --git openssl-clean/test/ssl_test_ctx.c openssl-workdir/test/ssl_test_ctx.c
+index 6cdced5..d98baec 100644
+--- openssl-clean/test/ssl_test_ctx.c
++++ openssl-workdir/test/ssl_test_ctx.c
+@@ -8,6 +8,7 @@
+  */
+ 
+ #include <string.h>
++#include <strings.h>
+ 
+ #include <openssl/e_os2.h>
+ #include <openssl/crypto.h>
+diff --git openssl-clean/test/v3nametest.c openssl-workdir/test/v3nametest.c
+index 566472a..b9ddeec 100644
+--- openssl-clean/test/v3nametest.c
++++ openssl-workdir/test/v3nametest.c
+@@ -8,6 +8,7 @@
+  */
+ 
+ #include <string.h>
++#include <strings.h>
+ 
+ #include <openssl/e_os2.h>
+ #include <openssl/x509.h>

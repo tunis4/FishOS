@@ -1,0 +1,49 @@
+#! /bin/sh
+
+name=sdl3
+version=3.2.22
+revision=1
+git_url="https://github.com/libsdl-org/SDL.git"
+commit=a96677bdf6b4acb84af4ec294e5f60a4e8cbbe03
+hostdeps="gcc pkg-config"
+deps="core-libs libx11 libxext libxcursor libxi libxfixes libxkbcommon libxrandr libxrender libxxf86vm mesa"
+
+configure() {
+    cmake_configure \
+        -DSDL_ALTIVEC=OFF \
+        -DSDL_DISKAUDIO=OFF \
+        -DSDL_OPENGL=ON \
+        -DSDL_OPENGLES=ON \
+        -DSDL_PTHREADS=ON \
+        -DSDL_PTHREADS_SEM=OFF \
+        -DSDL_OSS=OFF \
+        -DSDL_ALSA=OFF \
+        -DSDL_JACK=OFF \
+        -DSDL_PULSEAUDIO=OFF \
+        -DSDL_SNDIO=OFF \
+        -DSDL_RPATH=OFF \
+        -DSDL_X11=ON \
+        -DSDL_WAYLAND=OFF \
+        -DSDL_RPI=OFF \
+        -DSDL_COCOA=OFF \
+        -DSDL_DIRECTX=OFF \
+        -DSDL_WASAPI=OFF \
+        -DSDL_RENDER_D3D=OFF \
+        -DSDL_VIVANTE=OFF \
+        -DSDL_VULKAN=OFF \
+        -DSDL_KMSDRM=OFF \
+        -DSDL_HIDAPI=ON \
+        -DSDL_SHARED=ON \
+        -DSDL_STATIC=OFF \
+        -DSDL_TEST_LIBRARY=OFF
+}
+
+build() {
+    cmake --build . -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" cmake --install .
+
+    post_package_strip
+}

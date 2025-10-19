@@ -1,10 +1,12 @@
 #pragma once
 
-#include <dev/device.hpp>
+#include <dev/block.hpp>
+#include <dev/net.hpp>
 #include <dev/pci.hpp>
 #include <mem/pmm.hpp>
 #include <sched/sched.hpp>
 #include <klib/lock.hpp>
+#include <klib/coroutine.hpp>
 
 namespace dev::virtio {
     struct Queue {
@@ -77,7 +79,8 @@ namespace dev::virtio {
         Config common_cfg, device_cfg;
         NotifyConfig notify_cfg;
 
-        void init();
+        u64 init(u64 features);
+
         void add_queue(Queue *queue, u16 index);
         void notify_queue(Queue *queue, u16 index);
     };
@@ -86,7 +89,7 @@ namespace dev::virtio {
         void init();
         void deinit();
 
-        isize read_write_block(usize block, uptr page_phy, Direction direction) override;
+        klib::RootAwaitable<isize> read_write_block(usize block, uptr page_phy, Direction direction) override;
     
     private:
         struct [[gnu::packed]] RequestHeader {
@@ -99,8 +102,10 @@ namespace dev::virtio {
         };
 
         struct Request {
+            using Callback = void(std::coroutine_handle<>);
+
             Request *next;
-            sched::Event event;
+            klib::RequestCallback<isize> callback;
             volatile RequestHeader request_header;
             volatile u8 request_status;
         };
@@ -115,6 +120,33 @@ namespace dev::virtio {
         void free_request(Request *request);
 
         void irq();
+    };
+
+    struct NetDevice final : public virtio::Device, public net::Interface {
+        void init();
+        void deinit();
+
+        net::Packet alloc_packet(usize requested_size) override;
+        void free_packet(net::Packet packet) override;
+        klib::RootAwaitable<isize> send_packet(net::Packet packet, net::Mac target_mac, u16 proto) override;
+
+    private:
+        struct [[gnu::packed]] PacketHeader {
+            u8 flags;
+            u8 gso_type;
+            u16 header_len;
+            u16 gso_size;
+            u16 checksum_start;
+            u16 checksum_offset;
+            u16 num_buffers;
+        };
+
+        Queue rx_queue, tx_queue;
+
+        klib::RequestCallback<isize> tx_callbacks[128] = {};
+
+        void rx_irq();
+        void tx_irq();
     };
 
     namespace Cap {
@@ -158,5 +190,10 @@ namespace dev::virtio {
         constexpr u32 QUEUE_DESC = 32;
         constexpr u32 QUEUE_AVAIL = 40;
         constexpr u32 QUEUE_USED = 48;
+    }
+
+    namespace Feature {
+        constexpr u64 VERSION_1 = (u64)1 << 32;
+        constexpr u64 NET_MAC = (u64)1 << 5;
     }
 }

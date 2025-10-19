@@ -1,5 +1,5 @@
 project('fishos', ['cpp', 'c', 'nasm'], default_options: [
-  'buildtype=debug', 'warning_level=2', 'cpp_std=gnu++23', 'b_sanitize=undefined'
+  'buildtype=debug', 'warning_level=2', 'cpp_std=gnu++23'
 ])
 
 if not meson.is_cross_build()
@@ -9,7 +9,7 @@ endif
 fs = import('fs')
 
 add_global_arguments([
-  '-O0', '-g3', '-pipe',
+  '-g3', '-pipe',
   '-Wno-unused-parameter', '-Wno-missing-field-initializers',
   '-ffile-prefix-map=@0@/='.format(fs.relative_to(meson.current_source_dir(), meson.build_root())),
 
@@ -67,7 +67,9 @@ source_files = [
   'src/cpu/syscall/syscall.cpp',
   'src/cpu/syscall/syscall_entry.asm',
 
-  'src/dev/device.cpp',
+  'src/dev/io_service.cpp',
+  'src/dev/block.cpp',
+  'src/dev/net.cpp',
   'src/dev/devnode.cpp',
   'src/dev/pci.cpp',
   'src/dev/virtio.cpp',
@@ -111,10 +113,18 @@ source_files = [
 
   'src/userland/elf.cpp',
   'src/userland/pipe.cpp',
-  'src/userland/socket.cpp',
   'src/userland/futex.cpp',
   'src/userland/signal.cpp',
   'src/userland/pid.cpp',
+  'src/userland/info.cpp',
+  'src/userland/inotify.cpp',
+  'src/userland/eventfd.cpp',
+
+  'src/userland/socket/socket.cpp',
+  'src/userland/socket/local/stream.cpp',
+  'src/userland/socket/local/datagram.cpp',
+  'src/userland/socket/udp.cpp',
+  'src/userland/socket/tcp.cpp',
 ]
 
 fonts = [

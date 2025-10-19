@@ -32,4 +32,10 @@ namespace klib {
     inline constexpr usize bits_to(usize i) {
         return align_up(i, sizeof(T) * 8) / (sizeof(T) * 8);
     }
+
+    inline constexpr usize num_digits(u64 x, u64 base = 10) {
+        usize i = 0;
+        while (x /= base) i++;
+        return i;
+    }
 }

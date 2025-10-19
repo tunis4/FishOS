@@ -1,28 +1,25 @@
+#! /bin/sh
+
 name=libjpeg-turbo
-version=3.0.2
+version=3.1.1
 revision=1
 tarball_url="https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/${version}.tar.gz"
-tarball_blake2b="500c9d3c319ad58f28d6bbf7a208aea0b9af91ec4471a58ba1ad3860acc6f5e99498a1f780fa1984bdf6a6d5f894dbf1ba7c8c2e13e8f3ccc96e16c5b45c1f32"
-imagedeps="gcc ninja python git nasm"
-hostdeps="gcc cmake pkg-config"
+tarball_blake2b="d0654ff4067c4c1aef25d0a7df90844bdce9c41e87147ef1fcf8c8a441fc9570f7f41dbba5867ebbbc973e64fd20692be6168dbd59e4aa59dcf3018d228e25df"
+imagedeps="nasm"
+hostdeps="gcc pkg-config"
 deps="core-libs"
 
-build() {
-    cmake \
-        -GNinja \
-        -DCMAKE_TOOLCHAIN_FILE=${base_dir}/build-support/CMakeToolchain.txt \
-        -DCMAKE_INSTALL_PREFIX=${prefix} \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DENABLE_STATIC=FALSE \
-        -DCMAKE_INSTALL_DEFAULT_LIBDIR=lib \
-        -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
-        ${source_dir}
+configure() {
+    cmake_configure \
+        -DWITH_JPEG8=ON
+}
 
-    ninja -j${parallelism}
+build() {
+    cmake --build . -j${parallelism}
 }
 
 package() {
-    DESTDIR="${dest_dir}" ninja install
+    DESTDIR="${dest_dir}" cmake --install .
 
     post_package_strip
 }

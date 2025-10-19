@@ -6,7 +6,7 @@
 
 namespace userland {
     Pipe::Pipe() {
-        type = vfs::NodeType::FIFO;
+        node_type = vfs::NodeType::FIFO;
         event = &pipe_event;
     }
 
@@ -32,7 +32,7 @@ namespace userland {
                 return 0;
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
-            if (pipe_event.await() == -EINTR)
+            if (pipe_event.wait() == -EINTR)
                 return -EINTR;
         }
         count = ring_buffer.read((u8*)buf, count);
@@ -48,7 +48,7 @@ namespace userland {
                 break;
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
-            if (pipe_event.await() == -EINTR)
+            if (pipe_event.wait() == -EINTR)
                 return -EINTR;
         }
         count = ring_buffer.write((const u8*)buf, count);
@@ -74,9 +74,7 @@ namespace userland {
     }
 
     isize syscall_pipe(int pipefd[2], int flags) {
-#if SYSCALL_TRACE
-        klib::printf("pipe(%#lX, %d)\n", (uptr)pipefd, flags);
-#endif
+        log_syscall("pipe(%#lX, %d)\n", (uptr)pipefd, flags);
         sched::Process *process = cpu::get_current_thread()->process;
 
         if (flags & ~(O_CLOEXEC | O_NONBLOCK)) {

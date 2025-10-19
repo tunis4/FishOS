@@ -1,0 +1,18 @@
+#! /bin/sh
+
+name=example
+version=0.0
+revision=1
+source_dir="userspace/example"
+hostdeps="gcc"
+deps="core-libs"
+
+build() {
+    cp -r ${source_dir}/. ./
+
+    make -j${parallelism} CC=${OS_TRIPLET}-gcc
+}
+
+package() {
+    make install DESTDIR="${dest_dir}" PREFIX="${prefix}" STRIP=${OS_TRIPLET}-strip
+}

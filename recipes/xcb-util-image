@@ -1,0 +1,27 @@
+#! /bin/sh
+
+name=xcb-util-image
+version=0.4.1
+revision=1
+tarball_url="https://xcb.freedesktop.org/dist/xcb-util-image-${version}.tar.xz"
+tarball_blake2b="7f1c7c3da950604adf4a22146e9bd3b77fb3b0d35f0a1bb17a1eefeb1ba5546d58a3e40ac0c130d67ebcbc8bdaf40ef734ff19434f66bd57bc4a4a849a88cf82"
+hostdeps="gcc pkg-config"
+deps="core-libs xcb-util"
+
+prepare() {
+    autotools_recursive_regen
+}
+
+configure() {
+    autotools_configure
+}
+
+build() {
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+    post_package_strip
+}

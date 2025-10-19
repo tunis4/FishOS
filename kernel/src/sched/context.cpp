@@ -1,7 +1,8 @@
 #include <sched/context.hpp>
+#include <klib/cstring.hpp>
 
 namespace sched {
-    void from_ucontext(cpu::InterruptState *gpr_state, const ucontext_t *ucontext) {
+    void from_ucontext(cpu::InterruptState *gpr_state, void *extended_state, const ucontext_t *ucontext) {
         const mcontext_t *mcontext = &ucontext->uc_mcontext;
         gpr_state->r15 = mcontext->gregs[REG_R15];
         gpr_state->r14 = mcontext->gregs[REG_R14];
@@ -21,9 +22,10 @@ namespace sched {
         gpr_state->rip = mcontext->gregs[REG_RIP];
         gpr_state->rsp = mcontext->gregs[REG_RSP];
         gpr_state->rflags = mcontext->gregs[REG_EFL];
+        memcpy(extended_state, mcontext->fpregs, cpu::extended_state_size);
     }
 
-    void to_ucontext(const cpu::InterruptState *gpr_state, ucontext_t *ucontext) {
+    void to_ucontext(const cpu::InterruptState *gpr_state, void *extended_state, ucontext_t *ucontext) {
         mcontext_t *mcontext = &ucontext->uc_mcontext;
         mcontext->gregs[REG_R15] = gpr_state->r15;
         mcontext->gregs[REG_R14] = gpr_state->r14;
@@ -43,5 +45,6 @@ namespace sched {
         mcontext->gregs[REG_RIP] = gpr_state->rip;
         mcontext->gregs[REG_RSP] = gpr_state->rsp;
         mcontext->gregs[REG_EFL] = gpr_state->rflags;
+        memcpy(mcontext->fpregs, extended_state, cpu::extended_state_size);
     }
 }

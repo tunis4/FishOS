@@ -24,8 +24,8 @@ namespace mmio {
 
 namespace cpu {
     void early_init();
-    void smp_init(limine_smp_response *smp_res);
-    void init(limine_smp_info *info);
+    void smp_init(limine_mp_response *smp_res);
+    void init(limine_mp_info *info);
 
     extern usize extended_state_size;
     extern void (*save_extended_state)(void *storage);
@@ -181,13 +181,6 @@ namespace cpu {
 
     static inline void invlpg(void *m) {
         asm volatile("invlpg (%0)" : : "r" (m) : "memory");
-    }
-    
-    template<klib::Integral T> 
-    static inline T bswap(T val) {
-        volatile T result;
-        asm volatile("bswap %0" : "=r" (result) : "r" (val));
-        return result;
     }
 
     template<klib::Integral T>

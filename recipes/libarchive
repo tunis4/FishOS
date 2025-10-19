@@ -1,24 +1,26 @@
+#! /bin/sh
+
 name=libarchive
-version=3.7.2
+version=3.8.1
 revision=1
 tarball_url="https://github.com/libarchive/libarchive/releases/download/v${version}/libarchive-${version}.tar.xz"
-tarball_blake2b="7221db4811a965ee61d879a2603480363628a19995a351b572d099be9f35576d76f0b0822f9a5a47d9929bc094d4444fd8eafcb4a073e39bb3aa797d4b926ca5"
-source_hostdeps="automake autoconf libtool pkg-config"
-hostdeps="gcc autoconf automake libtool pkg-config"
-deps="core-libs zlib xz zstd libexpat libxml"
+tarball_blake2b="92ce11758ea050c7f5b3b2440566b71d29d4fe3ee90ee3455117585ef629eb7cfbe6f3c67bfb309c38d02118ef8f71c1c30ffe14466bfef7929c6d6134b11fc8"
+hostdeps="gcc pkg-config"
+deps="core-libs bzip2 libexpat libxml2 xz zlib zstd"
 
-regenerate() {
-    autotools_recursive_regen
+configure() {
+    cmake_configure
 }
 
 build() {
-    autotools_configure
-
-    make -j${parallelism}
+    cmake --build . -j${parallelism}
 }
 
 package() {
-    DESTDIR="${dest_dir}" make install
+    DESTDIR="${dest_dir}" cmake --install .
+
+    # Remove static libraries
+    rm -v "${dest_dir}${prefix}/lib/libarchive.a"
 
     post_package_strip
 }

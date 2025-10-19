@@ -1,30 +1,31 @@
-name=mesa-demos
-version=8.5.0
-revision=1
-tarball_url="https://archive.mesa3d.org/demos/${version}/mesa-demos-${version}.tar.gz"
-tarball_blake2b="82ded42d845449d925809046d605a30d3f66b5aba57716fdfee99611750001a80aebbda5c66099c3ee9525b655d86e8cf4aeb43adbc939182705ba8fa2ab9c92"
-source_hostdeps="automake autoconf libtool pkg-config"
-hostdeps="gcc autoconf automake libtool pkg-config"
-deps="core-libs freetype2 mesa glu libx11 libxext"
+#! /bin/sh
 
-regenerate() {
-    autotools_recursive_regen
+name=mesa-demos
+version=9.0.0
+revision=1
+tarball_url="https://archive.mesa3d.org/demos/mesa-demos-${version}.tar.xz"
+tarball_blake2b="426211886344e88616670f0da8c71385e0ab86fd7dab60c7a477b165f33d2f7bd5fd9297f1f67c78e60fed5c98ab8851c1bd4ae92a6b0b486fd158196b109eb0"
+imagedeps="glslang-tools"
+hostdeps="gcc pkg-config"
+deps="core-libs freetype2 mesa glu libx11 libxext libxcb libxkbcommon"
+
+configure() {
+    meson_configure \
+        -Dgles1=enabled \
+        -Dgles2=enabled \
+        -Dosmesa=disabled \
+        -Dlibdrm=disabled \
+        -Dx11=enabled \
+        -Dvulkan=enabled \
+        -Dwith-system-data-files=true
 }
 
 build() {
-    autotools_configure \
-        --enable-autotools \
-        --disable-gles1 \
-        --disable-osmesa \
-        --disable-libdrm \
-        --with-system-data-files \
-        --with-glut=no
-
-    make -j${parallelism}
+    meson compile -j${parallelism}
 }
 
 package() {
-    DESTDIR="${dest_dir}" make install
+    DESTDIR="${dest_dir}" meson install --no-rebuild
 
     post_package_strip
 }

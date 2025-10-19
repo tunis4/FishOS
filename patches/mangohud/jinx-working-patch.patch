@@ -1,0 +1,76 @@
+diff --color -urN --no-dereference mangohud-clean/include/filesystem.h mangohud-workdir/include/filesystem.h
+--- mangohud-clean/include/filesystem.h	2025-03-05 12:56:10.000000000 +0300
++++ mangohud-workdir/include/filesystem.h	2025-03-05 12:56:10.000000000 +0300
+@@ -71,6 +71,8 @@
+ #define GHC_OS_SYS5R4
+ #elif defined(BSD)
+ #define GHC_OS_BSD
++#elif defined(__fishos__)
++#define GHC_OS_FISHOS
+ #elif defined(__EMSCRIPTEN__)
+ #define GHC_OS_WEB
+ #include <wasi/api.h>
+diff --color -urN --no-dereference mangohud-clean/meson.build mangohud-workdir/meson.build
+--- mangohud-clean/meson.build	2025-03-05 12:56:10.000000000 +0300
++++ mangohud-workdir/meson.build	2025-03-05 12:56:10.000000000 +0300
+@@ -36,7 +36,7 @@
+ endif
+ # TODO: this is very incomplete
+ is_unixy = false
+-if ['linux', 'cygwin', 'gnu'].contains(host_machine.system())
++if ['linux', 'cygwin', 'gnu', 'fishos'].contains(host_machine.system())
+   pre_args += '-D_GNU_SOURCE'
+   pre_args += '-DHAVE_PTHREAD'
+   is_unixy = true
+diff --color -urN --no-dereference mangohud-clean/src/elfhacks.c mangohud-workdir/src/elfhacks.c
+--- mangohud-clean/src/elfhacks.c	2025-03-05 12:56:10.000000000 +0300
++++ mangohud-workdir/src/elfhacks.c	2025-03-05 12:56:10.000000000 +0300
+@@ -19,6 +19,10 @@
+ #include <fnmatch.h>
+ #include "elfhacks.h"
+ 
++#ifndef __WORDSIZE
++#define __WORDSIZE 64
++#endif
++
+ #ifndef __ELF_NATIVE_CLASS
+ #include "sys/reg.h"
+ #define __ELF_NATIVE_CLASS __WORDSIZE
+diff --color -urN --no-dereference mangohud-clean/src/file_utils.cpp mangohud-workdir/src/file_utils.cpp
+--- mangohud-clean/src/file_utils.cpp	2025-03-05 12:56:10.000000000 +0300
++++ mangohud-workdir/src/file_utils.cpp	2025-10-06 22:59:35.502535393 +0300
+@@ -39,7 +39,7 @@
+     return path;
+ }
+ 
+-#ifdef __linux__
++#if defined(__linux__) || defined(__fishos__)
+ std::vector<std::string> ls(const char* root, const char* prefix, LS_FLAGS flags)
+ {
+     std::vector<std::string> list;
+diff --color -urN --no-dereference mangohud-clean/src/mesa/util/detect_os.h mangohud-workdir/src/mesa/util/detect_os.h
+--- mangohud-clean/src/mesa/util/detect_os.h	2025-03-05 12:56:10.000000000 +0300
++++ mangohud-workdir/src/mesa/util/detect_os.h	2025-03-05 12:56:10.000000000 +0300
+@@ -81,6 +81,10 @@
+ #define DETECT_OS_UNIX 1
+ #endif
+ 
++#if defined(__fishos__)
++#define DETECT_OS_UNIX 1
++#endif
++
+ 
+ /*
+  * Make sure DETECT_OS_* are always defined, so that they can be used with #if
+diff --color -urN --no-dereference mangohud-clean/src/shell.h mangohud-workdir/src/shell.h
+--- mangohud-clean/src/shell.h	2025-03-05 12:56:10.000000000 +0300
++++ mangohud-workdir/src/shell.h	2025-03-05 12:56:10.000000000 +0300
+@@ -18,7 +18,7 @@
+     struct stat stat_buffer;
+     bool runtime = false;
+ 
+-#ifdef __linux__
++#if defined(__linux__) || defined(__fishos__)
+     void setNonBlocking(int fd) {
+         int flags = fcntl(fd, F_GETFL, 0);
+         fcntl(fd, F_SETFL, flags | O_NONBLOCK);

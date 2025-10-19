@@ -1,0 +1,34 @@
+diff --color -urN --no-dereference vulkan-loader-clean/CMakeLists.txt vulkan-loader-workdir/CMakeLists.txt
+--- vulkan-loader-clean/CMakeLists.txt	2025-09-19 20:30:01.000000000 +0300
++++ vulkan-loader-workdir/CMakeLists.txt	2025-09-19 20:30:01.000000000 +0300
+@@ -108,7 +108,7 @@
+     if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+         target_compile_definitions(platform_wsi INTERFACE VK_USE_PLATFORM_MACOS_MVK)
+     endif()
+-elseif(CMAKE_SYSTEM_NAME MATCHES "Linux|BSD|DragonFly|GNU|CYGWIN")
++elseif(CMAKE_SYSTEM_NAME MATCHES "Linux|BSD|DragonFly|GNU|CYGWIN|FishOS")
+     option(BUILD_WSI_XCB_SUPPORT "Build XCB WSI support" ON)
+     option(BUILD_WSI_XLIB_SUPPORT "Build Xlib WSI support" ON)
+     option(BUILD_WSI_XLIB_XRANDR_SUPPORT "Build X11 Xrandr WSI support" ON)
+diff --color -urN --no-dereference vulkan-loader-clean/loader/vk_loader_platform.h vulkan-loader-workdir/loader/vk_loader_platform.h
+--- vulkan-loader-clean/loader/vk_loader_platform.h	2025-09-19 20:30:01.000000000 +0300
++++ vulkan-loader-workdir/loader/vk_loader_platform.h	2025-09-25 00:58:27.281584320 +0300
+@@ -44,7 +44,8 @@
+ 
+ // Set of platforms with a common set of functionality which is queried throughout the program
+ #if defined(__linux__) || defined(__APPLE__) || defined(__Fuchsia__) || defined(__QNX__) || defined(__FreeBSD__) || \
+-    defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__GNU__) || defined(__CYGWIN__)
++    defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__GNU__) || defined(__CYGWIN__) || \
++    defined(__fishos__)
+ #define COMMON_UNIX_PLATFORMS 1
+ #else
+ #define COMMON_UNIX_PLATFORMS 0
+@@ -302,7 +303,7 @@
+ 
+ // loader_platform_executable_path finds application path + name.
+ // Path cannot be longer than 1024, returns NULL if it is greater than that.
+-#if defined(__linux__) || defined(__GNU__) || defined(__CYGWIN__)
++#if defined(__linux__) || defined(__GNU__) || defined(__CYGWIN__) || defined(__fishos__)
+ static inline char *loader_platform_executable_path(char *buffer, size_t size) {
+     ssize_t count = readlink("/proc/self/exe", buffer, size);
+     if (count == -1) return NULL;

@@ -1,3 +1,5 @@
+#! /bin/sh
+
 name=nyancat
 version=1.5.2
 revision=1
@@ -9,7 +11,11 @@ deps="core-libs"
 build() {
     cp -rp "${source_dir}"/. ./
 
-    make CC=${OS_TRIPLET}-gcc -j${parallelism}
+    make \
+        CC=${OS_TRIPLET}-gcc \
+        CFLAGS="$TARGET_CFLAGS -std=c99" \
+        LDFLAGS="$TARGET_LDFLAGS" \
+        -j${parallelism}
 }
 
 package() {

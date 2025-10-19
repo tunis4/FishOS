@@ -1,8 +1,34 @@
+diff --git zlib-clean/Makefile.in zlib-workdir/Makefile.in
+index cb8b00a..f9bb742 100644
+--- zlib-clean/Makefile.in
++++ zlib-workdir/Makefile.in
+@@ -275,7 +275,7 @@ gzwrite.lo: $(SRCDIR)gzwrite.c
+ 
+ 
+ placebo $(SHAREDLIBV): $(PIC_OBJS) libz.a
+-	$(LDSHARED) $(SFLAGS) -o $@ $(PIC_OBJS) $(LDSHAREDLIBC) $(LDFLAGS)
++	$(LDSHARED) $(SFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $(PIC_OBJS) $(LDSHAREDLIBC)
+ 	rm -f $(SHAREDLIB) $(SHAREDLIBM)
+ 	ln -s $@ $(SHAREDLIB)
+ 	ln -s $@ $(SHAREDLIBM)
+@@ -288,10 +288,10 @@ minigzip$(EXE): minigzip.o $(STATICLIB)
+ 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ minigzip.o $(TEST_LIBS)
+ 
+ examplesh$(EXE): example.o $(SHAREDLIBV)
+-	$(CC) $(CFLAGS) -o $@ example.o $(LDFLAGS) -L. $(SHAREDLIBV)
++	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ example.o -L. $(SHAREDLIBV)
+ 
+ minigzipsh$(EXE): minigzip.o $(SHAREDLIBV)
+-	$(CC) $(CFLAGS) -o $@ minigzip.o $(LDFLAGS) -L. $(SHAREDLIBV)
++	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ minigzip.o -L. $(SHAREDLIBV)
+ 
+ example64$(EXE): example64.o $(STATICLIB)
+ 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ example64.o $(TEST_LIBS)
 diff --git zlib-clean/configure zlib-workdir/configure
-index cc867c9..1bba45a 100755
+index c55098a..46d67dc 100755
 --- zlib-clean/configure
 +++ zlib-workdir/configure
-@@ -226,7 +226,7 @@ if test "$gcc" -eq 1 && ($cc -c $test.c) >> configure.log 2>&1; then
+@@ -227,7 +227,7 @@ if test "$gcc" -eq 1 && ($cc -c $test.c) >> configure.log 2>&1; then
      uname=`(uname -s || echo unknown) 2>/dev/null`
    fi
    case "$uname" in

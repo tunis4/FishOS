@@ -1,0 +1,24 @@
+#! /bin/sh
+
+name=base
+skip_pkg_check=yes
+version=0.0
+revision=3
+deps="base-files kernel init bash coreutils iana-etc os-test
+diffutils findutils gawk gmp grep gzip less mpc mpfr
+nano ncurses pcre2 sed tar tzdata xz zlib zstd metalog
+cronie man-db texinfo cal bash-completion lua
+
+gcc binutils make
+
+xorg-server xf86-video-fbdev xf86-input-evdev xorg-xinit
+
+mate-terminal mate-icon-theme ttf-dejavu marco
+mate-panel mate-applets mate-menus mate-session-manager mate-themes
+pluma mate-utils links
+
+xorg-xeyes xorg-xclock
+jwm st
+mesa mesa-demos vulkan-tools tyrquake mangohud
+adwaita-icon-theme
+mate-calc eom mate-control-center"

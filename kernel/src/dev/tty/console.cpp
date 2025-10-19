@@ -4,13 +4,15 @@
 namespace dev::tty {
     ConsoleDevNode::ConsoleDevNode() {
         keyboard = input::main_keyboard;
-        event = &keyboard->event;
-        keyboard_listener = keyboard->create_listener("console_listener", [] (void *priv) {
-            auto *self = (ConsoleDevNode*)priv;
-            input::InputEvent input_event;
-            while (self->keyboard_listener->event_buffer.read(&input_event, 1))
-                self->process_input_event(input_event);
-        }, this);
+        if (keyboard) {
+            event = &keyboard->event;
+            keyboard_listener = keyboard->create_listener("console_listener", [] (void *priv) {
+                auto *self = (ConsoleDevNode*)priv;
+                input::InputEvent input_event;
+                while (self->keyboard_listener->event_buffer.read(&input_event, 1))
+                    self->process_input_event(input_event);
+            }, this);
+        }
 
         auto &term = gfx::kernel_terminal();
         winsize.ws_col = term.width_chars;
@@ -20,7 +22,8 @@ namespace dev::tty {
     }
 
     ConsoleDevNode::~ConsoleDevNode() {
-        keyboard->remove_listener(keyboard_listener);
+        if (keyboard)
+            keyboard->remove_listener(keyboard_listener);
     }
 
     isize ConsoleDevNode::open(vfs::FileDescription *fd) {
@@ -31,7 +34,7 @@ namespace dev::tty {
     isize ConsoleDevNode::read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
         Terminal::on_read();
         while (input_buffer.is_empty())
-            if (event->await() == -EINTR)
+            if (event->wait() == -EINTR)
                 return -EINTR;
         return input_buffer.read((char*)buf, count);
     }
@@ -92,6 +95,9 @@ namespace dev::tty {
     };
 
     void ConsoleDevNode::process_input_event(input::InputEvent &input_event) {
+        if (!gfx::kernel_terminal_enabled)
+            return;
+ 
         if (input_event.type != EV_KEY || input_event.value == 0)
             return;
         

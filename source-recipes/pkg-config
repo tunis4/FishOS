@@ -1,9 +1,0 @@
-name=pkg-config
-version=2.1.0
-tarball_url="https://distfiles.ariadne.space/pkgconf/pkgconf-${version}.tar.xz"
-tarball_blake2b="43ac91f15106764f0b03ac4e1c3ff59aaba0436a221a295be93dd1a78b74e0185e60be8d24d040cc4ce0b0fb4446a6a8f493e7cc69bafafe5cefa9beab9b2bd5"
-hostdeps="autoconf automake libtool"
-
-regenerate() {
-    autotools_recursive_regen
-}

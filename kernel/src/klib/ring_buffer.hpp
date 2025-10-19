@@ -26,12 +26,9 @@ namespace klib {
 
             memcpy(buffer, data + first_pass_offset, first_pass_count * sizeof(T));
 
-            if (first_pass_count == count)
-                goto leave;
+            if (first_pass_count < count)
+                memcpy(buffer + first_pass_count, data, (count - first_pass_count) * sizeof(T));
 
-            memcpy(buffer + first_pass_count, data, (count - first_pass_count) * sizeof(T));
-
-        leave:
             read_index += count;
             return count;
         }
@@ -44,12 +41,9 @@ namespace klib {
 
             memcpy(data + first_pass_offset, buffer, first_pass_count * sizeof(T));
 
-            if (first_pass_count == count)
-                goto leave;
+            if (first_pass_count < count)
+                memcpy(data, buffer + first_pass_count, (count - first_pass_count) * sizeof(T));
 
-            memcpy(data, buffer + first_pass_count, (count - first_pass_count) * sizeof(T));
-
-        leave:
             write_index += count;
             return count;
         }

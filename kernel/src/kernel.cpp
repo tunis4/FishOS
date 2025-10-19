@@ -24,57 +24,81 @@
 #include <sched/time.hpp>
 #include <sched/sched.hpp>
 #include <userland/elf.hpp>
+#include <userland/futex.hpp>
 #include <fs/vfs.hpp>
 #include <fs/initramfs.hpp>
+#include <dev/io_service.hpp>
 #include <dev/devnode.hpp>
 #include <dev/input/input.hpp>
 #include <dev/pci.hpp>
+#include <dev/net.hpp>
 
+[[gnu::used, gnu::section(".limine_requests")]]
+static volatile LIMINE_BASE_REVISION(LIMINE_API_REVISION);
+
+[[gnu::used, gnu::section(".limine_requests")]]
 static volatile limine_hhdm_request hhdm_req = {
     .id = LIMINE_HHDM_REQUEST,
     .revision = 0
 };
 
+[[gnu::used, gnu::section(".limine_requests")]]
 static volatile limine_framebuffer_request fb_req = {
     .id = LIMINE_FRAMEBUFFER_REQUEST,
     .revision = 0
 };
 
-static volatile limine_smp_request smp_req = {
-    .id = LIMINE_SMP_REQUEST,
+[[gnu::used, gnu::section(".limine_requests")]]
+static volatile limine_mp_request smp_req = {
+    .id = LIMINE_MP_REQUEST,
     .revision = 0,
     .flags = 0
 };
 
+[[gnu::used, gnu::section(".limine_requests")]]
 static volatile limine_memmap_request memmap_req = {
     .id = LIMINE_MEMMAP_REQUEST,
     .revision = 0
 };
 
+[[gnu::used, gnu::section(".limine_requests")]]
 static volatile limine_rsdp_request rsdp_req = {
     .id = LIMINE_RSDP_REQUEST,
     .revision = 0
 };
 
+[[gnu::used, gnu::section(".limine_requests")]]
 static volatile limine_kernel_address_request kernel_addr_req = {
     .id = LIMINE_KERNEL_ADDRESS_REQUEST,
     .revision = 0
 };
 
+[[gnu::used, gnu::section(".limine_requests")]]
 static volatile limine_kernel_file_request kernel_file_req = {
     .id = LIMINE_KERNEL_FILE_REQUEST,
     .revision = 0
 };
 
+[[gnu::used, gnu::section(".limine_requests")]]
 static volatile limine_module_request module_req = {
     .id = LIMINE_MODULE_REQUEST,
     .revision = 0
 };
 
+[[gnu::used, gnu::section(".limine_requests")]]
 static volatile limine_boot_time_request boot_time_req = {
     .id = LIMINE_BOOT_TIME_REQUEST,
     .revision = 0
 };
+
+[[gnu::used, gnu::section(".limine_requests_start")]]
+static volatile LIMINE_REQUESTS_START_MARKER;
+
+[[gnu::used, gnu::section(".limine_requests_end")]]
+static volatile LIMINE_REQUESTS_END_MARKER;
+
+extern "C" void (*__init_array_start[])();
+extern "C" void (*__init_array_end[])();
 
 struct StackFrame {
     StackFrame *next;
@@ -82,18 +106,19 @@ struct StackFrame {
 };
 
 [[noreturn]] void panic(const char *format, ...) {
-    klib::panic_printf("\nKernel Panic: ");
+    gfx::kernel_terminal_enabled = true;
+    klib::printf_unlocked("\nKernel Panic: ");
     va_list list;
     va_start(list, format);
-    klib::panic_vprintf(format, list);
+    klib::vprintf_unlocked(format, list);
     va_end(list);
     StackFrame *frame = (StackFrame*)__builtin_frame_address(0);
-    klib::panic_printf("\nStacktrace:\n");
+    klib::printf_unlocked("\nStacktrace:\n");
     while (true) {
         if (frame == nullptr || frame->ip == 0)
             break;
         
-        klib::panic_printf("%#lX\n", frame->ip);
+        klib::printf_unlocked("%#lX\n", frame->ip);
         frame = frame->next;
     }
     abort();
@@ -101,7 +126,7 @@ struct StackFrame {
 
 [[noreturn]] void kernel_thread();
 
-extern "C" [[noreturn]] void _start() {
+extern "C" [[noreturn]] void kmain() {
     if (!fb_req.response || fb_req.response->framebuffer_count == 0 || !hhdm_req.response)
         panic("Did not receive enough limine features to initialise early boot terminal");
 
@@ -122,11 +147,17 @@ extern "C" [[noreturn]] void _start() {
     cpu::early_init();
     mem::vmem::early_init();
 
-    vmm::init(hhdm, memmap_req.response, kernel_addr_req.response);
+    static u8 vmm_data[sizeof(mem::VMM)]; // FIXME: insanely cursed, needed for global constructors to work but there has to be a better way
+    mem::vmm = new (&vmm_data) mem::VMM();
+    mem::vmm->init(hhdm, memmap_req.response, kernel_addr_req.response);
     klib::printf("VMM: Initialized\n");
 
-    mem::bump::init(vmm::heap_base, vmm::heap_size);
+    mem::bump::init(mem::vmm->heap_base, mem::vmm->heap_size);
     klib::printf("Allocator: Initialized\n");
+
+    // call global constructors
+    for (auto ctor = __init_array_start; ctor < __init_array_end; ctor++)
+        (*ctor)();
 
     gfx::kernel_terminal();
     gfx::kernel_terminal_enabled = true;
@@ -144,6 +175,7 @@ extern "C" [[noreturn]] void _start() {
 
     sched::init();
     sched::init_time(boot_time_req.response);
+    userland::init_futex();
     klib::printf("Scheduler: Initialized\n");
 
     vfs::init();
@@ -155,7 +187,7 @@ extern "C" [[noreturn]] void _start() {
     asm volatile("sti");
     while (true) asm volatile("hlt");
 
-    panic("Reached end of _start");
+    panic("Reached end of kmain");
 }
 
 static void create_device_file(const char *path, uint major, uint minor, bool is_char) {
@@ -165,11 +197,13 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
         entry->vnode = dev::CharDevNode::create_node(dev::make_dev_id(major, minor));
     else
         entry->vnode = dev::BlockDevNode::create_node(dev::make_dev_id(major, minor));
-    entry->create();
+    entry->create(is_char ? vfs::NodeType::CHAR_DEVICE : vfs::NodeType::BLOCK_DEVICE);
 }
 
 [[noreturn]] void kernel_thread() {
+    dev::init_io_service();
     dev::init_devices();
+    new net::LoopbackInterface();
 
     dev::pci::init();
     klib::printf("PCI: Initialized\n");
@@ -189,8 +223,12 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
     create_device_file("/dev/port",     1, 4, true);
     create_device_file("/dev/zero",     1, 5, true);
     create_device_file("/dev/full",     1, 7, true);
+    create_device_file("/dev/random",   1, 8, true);
+    create_device_file("/dev/urandom",  1, 9, true);
+
     create_device_file("/dev/tty",      5, 0, true);
     create_device_file("/dev/console",  5, 1, true);
+
     create_device_file("/dev/fb0",     29, 0, true);
     create_device_file("/dev/vda",      8, 0, false);
 
@@ -208,28 +246,27 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
     create_device_file("/dev/pts/ptmx", 5, 2, true);
     create_device_file("/dev/ptmx",     5, 2, true);
 
-    auto *init_entry = vfs::path_to_entry("/usr/bin/init");
-    if (init_entry->vnode == nullptr)
-        panic("Failed to find /usr/bin/init");
+    const char *init_path = "/usr/bin/init";
+    if (vfs::path_to_entry(init_path)->vnode == nullptr)
+        panic("Failed to find %s", init_path);
 
-    klib::printf("Loading executable /usr/bin/init\n");
+    klib::printf("Loading executable %s\n", init_path);
     sched::Process *init_process;
     if (klib::strstr(kernel_file_req.response->kernel_file->cmdline, "startwm")) {
         gfx::kernel_terminal_enabled = false;
-        char *argv[] = { (char*)"/usr/bin/init", (char*)"--startwm", nullptr };
-        init_process = sched::new_user_process(init_entry->vnode, true, 2, argv);
+        char *argv[] = { (char*)init_path, (char*)"--startwm", nullptr };
+        init_process = sched::create_init_process(init_path, 2, argv);
     } else {
-        char *argv[] = { (char*)"/usr/bin/init", nullptr };
-        init_process = sched::new_user_process(init_entry->vnode, true, 1, argv);
+        char *argv[] = { (char*)init_path, nullptr };
+        init_process = sched::create_init_process(init_path, 1, argv);
     }
 
     while (true) {
         if (init_process->get_main_thread()->state == sched::Thread::ZOMBIE) {
-            klib::printf("Init process died, rebooting in 5 seconds\n");
-            sched::timer::hpet::stall_ms(5000);
-            cpu::write_cr3(0);
+            klib::printf("Init process died\n");
+            // sched::timer::hpet::stall_ms(5000);
+            // cpu::write_cr3(0);
         }
-        init_process->zombie_event.await();
+        init_process->zombie_event.wait();
     }
-    // sched::terminate_self();
 }

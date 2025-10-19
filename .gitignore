@@ -1,10 +1,6 @@
 /jinx
-/builds
-/host-builds
-/host-pkgs
-/pkgs
+/build
 /sources
-/sysroot
 /fishos.iso
 /.vscode
 /.jinx-cache

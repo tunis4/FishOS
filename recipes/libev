@@ -1,0 +1,32 @@
+#! /bin/sh
+
+name=libev
+version=4.33
+revision=1
+tarball_url="http://dist.schmorp.de/libev/libev-${version}.tar.gz"
+tarball_blake2b="8a6cae25ffde10b24a5bbf084f6a8559af326b37acdbdf47dda34b7f0c7955f3ebd26958594444a574cfa3e2b4011e4be93ad2bd994ffd4c094bf36620e67ba5"
+hostdeps="gcc pkg-config"
+deps="core-libs"
+
+prepare() {
+    autotools_recursive_regen
+}
+
+configure() {
+        CFLAGS="$TARGET_CFLAGS -DEV_USE_EPOLL=0 -DEV_USE_LINUXAIO=0 -DEV_USE_IOURING=0 -DEV_USE_INOTIFY=0 -DEV_USE_EVENTFD=0 -DEV_USE_SIGNALFD=0 -DEV_USE_TIMERFD=0 -DEV_USE_CLOCK_SYSCALL=0" \
+        LDFLAGS="$TARGET_LDFLAGS" \
+    autotools_configure_noflags
+}
+
+build() {
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+    # fix conflict with libevent
+    rm "${dest_dir}"/usr/include/event.h
+
+    post_package_strip
+}

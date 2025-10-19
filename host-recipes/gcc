@@ -1,18 +1,23 @@
+#! /bin/sh
+
 name=gcc
 from_source=gcc-host
-revision=1
-imagedeps="gcc"
-hostdeps="autoconf-2.69 automake libtool pkg-config"
+clean_workdirs=no
+revision=2
+imagedeps="experimental:build-essential"
+hostdeps="pkg-config"
 hostrundeps="binutils"
 deps="mlibc-headers"
 
-build() {
+configure() {
     cp -rp "${source_dir}"/. ./
+    mkdir -p build && cd build
 
-    mkdir build && cd build
-
-        CXXFLAGS_FOR_TARGET="$CXXFLAGS" \
-        CFLAGS_FOR_TARGET="$CFLAGS" \
+        CFLAGS="$HOST_CFLAGS" \
+        CXXFLAGS="$HOST_CXXFLAGS" \
+        LDFLAGS="$HOST_LDFLAGS" \
+        CFLAGS_FOR_TARGET="$TARGET_CFLAGS" \
+        CXXFLAGS_FOR_TARGET="$TARGET_CXXFLAGS" \
     ../configure \
         --prefix="${prefix}" \
         --target=${OS_TRIPLET} \
@@ -27,7 +32,10 @@ build() {
         --enable-initfini-array \
         --enable-shared \
         --enable-host-shared
+}
 
+build() {
+    cd build
     make -j${parallelism} all-gcc
 }
 

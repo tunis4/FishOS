@@ -1,0 +1,43 @@
+#! /bin/sh
+
+name=links
+version=2.29
+revision=1
+tarball_url="http://links.twibright.com/download/links-${version}.tar.gz"
+tarball_blake2b="0427ce93577fbc7e684191cbece1d15328121d26b4fa57195980b3f8b96c19eb0b9b0cc31d39a02b521736449255f1d56c75484ecd7b1b1abf9dc386a0a2f85c"
+source_hostdeps="automake autoconf libtool pkg-config"
+hostdeps="gcc autoconf automake libtool pkg-config"
+deps="core-libs zlib openssl bzip2 libpng libxext freetype2 fontconfig libjpeg-turbo libtiff xz"
+
+prepare() {
+    sed -i '/AC_PROG_CC/a AC_PROG_CXX/' configure.in
+
+    autotools_recursive_regen_reconf
+}
+
+configure() {
+    autotools_configure \
+        --disable-dependency-tracking \
+        --enable-graphics \
+        --without-directfb \
+        --without-librsvg \
+        --with-bzip2 \
+        --with-X \
+        --with-zlib \
+        --with-openssl \
+        --with-libtiff \
+        --without-openmp \
+        --with-lzma \
+        --with-freetype \
+        --without-ipv6
+}
+
+build() {
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+    post_package_strip
+}

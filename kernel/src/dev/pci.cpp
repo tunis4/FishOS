@@ -6,9 +6,9 @@
 namespace dev::pci {
     void BAR::map() {
         ASSERT(is_mmio);
-        address = vmm::virt_alloc(length);
+        address = mem::vmm->virt_alloc(length);
         u64 page_flags = PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | (is_prefetchable ? PAGE_WRITE_THROUGH : PAGE_CACHE_DISABLE);
-        vmm::kernel_pagemap.map_range(address, length, page_flags, vmm::MappedRange::Type::DIRECT, physical);
+        mem::vmm->kernel_pagemap.map_direct(address, length, page_flags, physical);
     }
 
     BAR* Device::get_bar(u8 index) {
@@ -89,9 +89,10 @@ namespace dev::pci {
         u32 data;
         u64 address = msi_format_message(&data, vec, edge_trigger, deassert, cpu::get_current_cpu()->lapic_id);
 
-        bar->write<u64>(msix.table_bar_offset, address);
-        bar->write<u32>(msix.table_bar_offset + 8, data);
-        bar->write<u32>(msix.table_bar_offset + 12, 0);
+        u32 offset = msix.table_bar_offset + msix_vec * 16;
+        bar->write<u64>(offset, address);
+        bar->write<u32>(offset + 8, data);
+        bar->write<u32>(offset + 12, 0);
     }
 
     void Device::identify() {
@@ -159,7 +160,11 @@ namespace dev::pci {
             }
         });
 
-        if (vendor_id == 0x1af4 && device_id == 0x1001) {
+        if (vendor_id == 0x1af4 && device_id == 0x1000) {
+            auto *virtio_net = new virtio::NetDevice();
+            virtio_net->pci_device = this;
+            virtio_net->init();
+        } else if (vendor_id == 0x1af4 && device_id == 0x1001) {
             auto *virtio_blk = new virtio::BlockDevice();
             virtio_blk->pci_device = this;
             virtio_blk->init();

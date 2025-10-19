@@ -1,0 +1,24 @@
+#! /bin/sh
+
+name=picom
+version=12.5
+revision=1
+tarball_url="https://github.com/yshui/picom/archive/refs/tags/v${version}.tar.gz"
+tarball_blake2b="e74498032d474de70452272f4cffaad1d86de9a82e642f94322f523d1b3db206f4b7f0f4e9da60033f903a99c635489ec5ae87ef73daba2caf3c2e487d26d255"
+hostdeps="gcc pkg-config"
+deps="core-libs xcb-util-image xcb-util-renderutil libxrandr libxcomposite pixman libconfig dbus pcre2 libev uthash"
+
+configure() {
+    meson_configure \
+        -Dopengl=false
+}
+
+build() {
+    meson compile -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" meson install --no-rebuild
+
+    post_package_strip
+}

@@ -9,8 +9,8 @@ namespace dev::tty {
     struct Terminal {
         struct termios termios;
         struct winsize winsize;
-        sched::Process *foreground_process_group;
-        sched::Process *session;
+        sched::ProcessGroup *foreground_process_group;
+        sched::Session *session;
 
         Terminal();
         virtual ~Terminal();
@@ -23,7 +23,7 @@ namespace dev::tty {
 
         template<typename Put>
         void process_output_char(char c, Put &&put) {
-		    if (c == '\n' && (termios.c_oflag & ONLCR))
+            if (c == '\n' && (termios.c_oflag & ONLCR))
                 put('\r');
             put(c);
         }
@@ -52,7 +52,7 @@ namespace dev::tty {
                     signal = SIGTSTP;
 
                 if (signal != -1) {
-                    foreground_process_group->send_process_group_signal(signal);
+                    foreground_process_group->send_signal(signal);
                     return;
                 }
             }

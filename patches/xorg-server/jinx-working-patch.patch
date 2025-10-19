@@ -1,18 +1,18 @@
-diff --git xorg-server-clean/configure.ac xorg-server-workdir/configure.ac
-index 7ac669f..792940f 100644
---- xorg-server-clean/configure.ac
-+++ xorg-server-workdir/configure.ac
-@@ -1341,7 +1341,7 @@ AM_CONDITIONAL(INT10MODULE, test "x$INT10MODULE" = xyes)
- AC_DEFINE(SHAPE, 1, [Support SHAPE extension])
+diff --git xorg-server-clean/configure xorg-server-workdir/configure
+index a20b08a..401b499 100755
+--- xorg-server-clean/configure
++++ xorg-server-workdir/configure
+@@ -30570,7 +30570,7 @@ printf "%s\n" "#define SHAPE 1" >>confdefs.h
+ 
  
  if test "x$XKBPATH" = "xauto"; then
 -    XKBPATH=$(pkg-config --variable datadir xkbcomp || echo ${datadir})/X11/xkb
 +    XKBPATH=$($PKG_CONFIG --variable datadir xkbcomp || echo ${datadir})/X11/xkb
  fi
  
- AC_DEFINE_DIR(XKB_BASE_DIRECTORY, XKBPATH, [Path to XKB data])
-@@ -1351,7 +1351,7 @@ AC_ARG_WITH(xkb-bin-directory,
- 				[XKB_BIN_DIRECTORY="auto"])
+ 
+@@ -30600,7 +30600,7 @@ fi
+ 
  
  if test "x$XKB_BIN_DIRECTORY" = "xauto"; then
 -    XKB_BIN_DIRECTORY=$(pkg-config --variable bindir xkbcomp)
@@ -20,23 +20,23 @@ index 7ac669f..792940f 100644
      if test -z $XKB_BIN_DIRECTORY; then
          XKB_BIN_DIRECTORY="$bindir"
      fi
-@@ -1946,6 +1946,8 @@ if test "x$XORG" = xyes; then
- 	if test "x$DRM" = xyes -a "x$DRI2" = xyes; then
+@@ -32701,6 +32701,8 @@ fi
  		XORG_DRIVER_MODESETTING=yes
  	fi
-+	
-+	XORG_DRIVER_MODESETTING=no
  
- 	AC_SUBST([XORG_LIBS])
- 	AC_SUBST([XORG_SYS_LIBS])
-@@ -2127,7 +2129,7 @@ dnl XWin requires OpenGL spec files in order to generate wrapper code for native
-            AC_MSG_RESULT(yes)
-            if test "x$KHRONOS_SPEC_DIR" = "xauto" ; then
- 		PKG_CHECK_MODULES([KHRONOS_OPENGL_REGISTRY], [khronos-opengl-registry])
++	XORG_DRIVER_MODESETTING=no
++
+ 
+ 
+ 
+@@ -33762,7 +33764,7 @@ else
+ printf "%s\n" "yes" >&6; }
+ 
+ fi
 -		KHRONOS_SPEC_DIR=`pkg-config khronos-opengl-registry --variable=specdir`
 +		KHRONOS_SPEC_DIR=`$PKG_CONFIG khronos-opengl-registry --variable=specdir`
             fi
-            AC_SUBST(KHRONOS_SPEC_DIR)
+ 
  	fi
 diff --git xorg-server-clean/hw/xfree86/common/xf86Bus.c xorg-server-workdir/hw/xfree86/common/xf86Bus.c
 index fd144db..6eb018c 100644
@@ -59,7 +59,7 @@ index fd144db..6eb018c 100644
  
  Bool
 diff --git xorg-server-clean/hw/xfree86/common/xf86Config.c xorg-server-workdir/hw/xfree86/common/xf86Config.c
-index 5d814c1..14ebfe6 100644
+index 8d8ebf1..87c2449 100644
 --- xorg-server-clean/hw/xfree86/common/xf86Config.c
 +++ xorg-server-workdir/hw/xfree86/common/xf86Config.c
 @@ -49,6 +49,8 @@
@@ -72,7 +72,7 @@ index 5d814c1..14ebfe6 100644
  #include "xf86Modes.h"
  #include "xf86Parser.h"
 diff --git xorg-server-clean/hw/xfree86/common/xf86Configure.c xorg-server-workdir/hw/xfree86/common/xf86Configure.c
-index 4347f6d..52594c6 100644
+index 2b4105f..e6fbed9 100644
 --- xorg-server-clean/hw/xfree86/common/xf86Configure.c
 +++ xorg-server-workdir/hw/xfree86/common/xf86Configure.c
 @@ -27,6 +27,8 @@
@@ -98,7 +98,7 @@ index 395bbc7..4bf86cb 100644
  #include <X11/Xproto.h>
  #include <X11/Xatom.h>
 diff --git xorg-server-clean/hw/xfree86/common/xf86Helper.c xorg-server-workdir/hw/xfree86/common/xf86Helper.c
-index 0389945..b53b1a7 100644
+index 98dc372..9ddcbdb 100644
 --- xorg-server-clean/hw/xfree86/common/xf86Helper.c
 +++ xorg-server-workdir/hw/xfree86/common/xf86Helper.c
 @@ -38,6 +38,8 @@
@@ -124,7 +124,7 @@ index 5695e71..96c2d15 100644
  #if !defined(WIN32)
  #define HAS_UTSNAME 1
 diff --git xorg-server-clean/hw/xfree86/fbdevhw/fbdevhw.c xorg-server-workdir/hw/xfree86/fbdevhw/fbdevhw.c
-index 3d8b92e..f7be685 100644
+index 9c30f00..f259d93 100644
 --- xorg-server-clean/hw/xfree86/fbdevhw/fbdevhw.c
 +++ xorg-server-workdir/hw/xfree86/fbdevhw/fbdevhw.c
 @@ -10,12 +10,12 @@
@@ -300,7 +300,7 @@ index 0b13e49..aff6539 100644
  #include <X11/Xprotostr.h>
  
 diff --git xorg-server-clean/os/access.c xorg-server-workdir/os/access.c
-index 61ee8e3..5d69a4e 100644
+index bf8e961..f94b33e 100644
 --- xorg-server-clean/os/access.c
 +++ xorg-server-workdir/os/access.c
 @@ -120,7 +120,7 @@ SOFTWARE.
@@ -331,10 +331,10 @@ index c68aabc..a3217dc 100644
  #if !HAVE_OSPOLL
  #include "xserver_poll.h"
 diff --git xorg-server-clean/os/utils.c xorg-server-workdir/os/utils.c
-index 92a66e8..646722e 100644
+index f0d022f..677c581 100644
 --- xorg-server-clean/os/utils.c
 +++ xorg-server-workdir/os/utils.c
-@@ -1403,7 +1403,7 @@ System(const char *command)
+@@ -1412,7 +1412,7 @@ System(const char *command)
          return -1;
      }
  
@@ -343,7 +343,7 @@ index 92a66e8..646722e 100644
  }
  
  static struct pid {
-@@ -1633,7 +1633,7 @@ Pclose(void *iop)
+@@ -1642,7 +1642,7 @@ Pclose(void *iop)
      }
  #endif
  

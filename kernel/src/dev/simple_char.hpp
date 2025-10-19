@@ -31,12 +31,12 @@ namespace dev {
         MemDevNode() {}
 
         isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override {
-            memcpy(buf, (void*)(vmm::hhdm + offset), count);
+            memcpy(buf, (void*)(mem::hhdm + offset), count);
             return count;
         }
 
         isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override {
-            memcpy((void*)(vmm::hhdm + offset), buf, count);
+            memcpy((void*)(mem::hhdm + offset), buf, count);
             return count;
         }
     };
@@ -62,4 +62,25 @@ namespace dev {
             return actual_count;
         }
     };
+
+    struct RandomDevNode final : public CharDevNode {
+        u32 state = 1337;
+
+        RandomDevNode() {}
+
+        isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override {
+            for (usize i = 0; i < count; i++) {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                ((u8*)buf)[i] = state & 0xFF;
+            }
+            return count;
+        }
+
+        isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override { return count; }
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return 0; }
+    };
+
+    using URandomDevNode = RandomDevNode;
 }

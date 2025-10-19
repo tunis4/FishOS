@@ -1,22 +1,29 @@
+#! /bin/sh
+
 name=taisei
-version=1.3.2
+version=1.4.4
 revision=1
-tarball_url="https://github.com/taisei-project/taisei/releases/download/v${version}/taisei-v${version}.tar.xz"
-tarball_blake2b="608b5db6f17e2693539ce0742a1812633e91e901b3935b9e54f91514827642334f6cb6f0217aff713f1ff9dd01d971ae895ac8c98b0360f254b52d3e49bfae61"
+tarball_url="https://github.com/taisei-project/taisei/releases/download/v${version}/taisei-${version}.tar.xz"
+tarball_blake2b="8dcd65265062f510e407494ab977a1f2d98937fef3657fb61cc582f8ec855dc8402c79fa059a9ceff52e45a0ff50fde810d72c3a1b270ed64824d6dcb42ab983"
+imagedeps="build-essential"
 hostdeps="gcc pkg-config"
-deps="core-libs freetype2 libpng sdl2 libwebp zlib cglm openssl libzip"
-imagedeps="meson ninja"
+deps="core-libs freetype2 libpng sdl2-compat libwebp zlib cglm openssl"
+
+configure() {
+    meson_configure \
+        -Ddocs=disabled \
+        -Da_default=null \
+        -Db_lto=false \
+        -Da_sdl=disabled \
+        -Dvfs_zip=disabled
+}
 
 build() {
-    meson_configure \
-        -Ddocs=false \
-        -Da_sdl2mixer=false \
-        -Da_default=null \
-        -Db_lto=false
-
-    ninja -j${parallelism}
+    meson compile -j${parallelism}
 }
 
 package() {
-    DESTDIR="${dest_dir}" ninja install
+    DESTDIR="${dest_dir}" meson install --no-rebuild
+
+    post_package_strip
 }

@@ -1,0 +1,27 @@
+#! /bin/sh
+
+name=alsa-lib
+version=1.2.14
+revision=1
+tarball_url="http://www.alsa-project.org/files/pub/lib/alsa-lib-${version}.tar.bz2"
+tarball_sha512="2716cc3a2299da4a1a170d734af082d78dc452b253179d0f1a9ec190140734aecf002b6924eec4ff2699ce88ce1ae5c56821c267f36384910984db726d1f9626"
+hostdeps="gcc pkg-config"
+deps="core-libs"
+
+prepare() {
+    autotools_recursive_regen
+}
+
+configure() {
+    autotools_configure
+}
+
+build() {
+    make -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" make install
+
+    post_package_strip
+}

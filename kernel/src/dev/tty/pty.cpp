@@ -25,11 +25,17 @@ namespace dev::tty {
         while (ring_buffer.is_empty()) {
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
-            if (pty_event.await() == -EINTR)
+            if (pty_event.wait() == -EINTR)
                 return -EINTR;
         }
 
-        count = ring_buffer.read((char*)buf, count);
+        if (packet_mode && count > 0) {
+            *(u8*)buf = 0;
+            count = ring_buffer.read((char*)buf + 1, count - 1) + 1;
+        } else {
+            count = ring_buffer.read((char*)buf, count);
+        }
+
         peer->pty_event.trigger();
         return count;
     }
@@ -40,7 +46,7 @@ namespace dev::tty {
         while (peer->ring_buffer.is_full()) {
             if (fd->flags & O_NONBLOCK)
                 return -EWOULDBLOCK;
-            if (pty_event.await() == -EINTR)
+            if (pty_event.wait() == -EINTR)
                 return -EINTR;
         }
 
@@ -93,6 +99,14 @@ namespace dev::tty {
             return 0;
         case TIOCSPTLCK:
             return 0;
+        case TIOCPKT:
+            if (slave)
+                return -ENOTTY;
+            packet_mode = *(int*)arg;
+            return 0;
+        case TIOCGPKT:
+            *(int*)arg = packet_mode;
+            return 0;
         default:
             return terminal->tty_ioctl(fd, cmd, arg);
         }
@@ -115,7 +129,7 @@ namespace dev::tty {
         if (entry->parent == nullptr)
             return -ENOENT;
         entry->vnode = slave;
-        entry->create();
+        entry->create(vfs::NodeType::CHAR_DEVICE);
 
         fd->vnode = master;
         terminal->on_open(fd);

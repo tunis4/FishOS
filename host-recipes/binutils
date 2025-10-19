@@ -1,10 +1,15 @@
+#! /bin/sh
+
 name=binutils
 from_source=binutils
 revision=1
-imagedeps="gcc"
-hostdeps="autoconf-2.69 automake libtool pkg-config"
+imagedeps="build-essential"
+hostdeps="pkg-config"
 
-build() {
+configure() {
+        CFLAGS="$HOST_CFLAGS" \
+        CXXFLAGS="$HOST_CXXFLAGS" \
+        LDFLAGS="$HOST_LDFLAGS" \
     "${source_dir}"/configure \
         --prefix="${prefix}" \
         --target=${OS_TRIPLET} \
@@ -22,7 +27,9 @@ build() {
         --disable-nls \
         --disable-werror \
         --with-pic
+}
 
+build() {
     make -j${parallelism}
 }
 

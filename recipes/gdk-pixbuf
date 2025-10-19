@@ -1,22 +1,26 @@
-name=gdk-pixbuf
-version=2.42.10
-revision=1
-tarball_url="https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-${version}.tar.xz"
-tarball_blake2b="b6bec388b70a971ea5b336001920fdf433bcbc539d54e62c7b6198e968f0bd3560ef9adc94215b64b01e7d5db69c95d5a1d32654b38b051fceb75e93666b3385"
-imagedeps="meson ninja"
-hostdeps="gcc pkg-config"
-deps="core-libs glib libjpeg-turbo libpng libx11 libtiff"
+#! /bin/sh
 
-build() {
+name=gdk-pixbuf
+version=2.42.12
+revision=2
+tarball_url="https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-${version}.tar.xz"
+tarball_blake2b="718a96c9efb836a275692ccbc403df0eb285918c5867d344406f660898c7ce8aad8cce7187faf7f6e9cdcfd1b051d5384f57644d946b888baddbaafb8f99309c"
+imagedeps="libglib2.0-dev"
+hostdeps="gcc pkg-config"
+deps="core-libs glib2 libjpeg-turbo libpng libx11 libtiff"
+
+configure() {
     meson_configure \
         -Dgio_sniffing=false \
         -Dman=false
+}
 
-    ninja -j${parallelism}
+build() {
+    meson compile -j${parallelism}
 }
 
 package() {
-    DESTDIR="${dest_dir}" ninja install
+    DESTDIR="${dest_dir}" meson install --no-rebuild
 
     post_package_strip
 }

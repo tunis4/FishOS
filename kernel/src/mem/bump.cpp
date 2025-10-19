@@ -19,17 +19,18 @@ namespace mem::bump {
         klib::InterruptLock interrupt_guard;
         klib::LockGuard guard(alloc_lock);
 
-        if (size != 0) {
-            uptr ret = klib::align_up(alloc_base + alloc_ptr, alignment);
-            alloc_ptr = (ret - alloc_base) + size;
-            ASSERT(alloc_ptr < total_size);
-            return (void*)ret;
-        }
+        if (size == 0)
+            return nullptr;
 
-        return nullptr;
+        uptr ret = klib::align_up(alloc_base + alloc_ptr, alignment);
+        alloc_ptr = (ret - alloc_base) + size;
+        ASSERT(alloc_ptr < total_size);
+        return (void*)ret;
     }
 
-    void free(void *ptr) {}
+    void free(void *ptr) {
+
+    }
 
     void* reallocate(void *ptr, usize size) {
         if (ptr == nullptr)
@@ -44,7 +45,5 @@ namespace mem::bump {
         memcpy(newptr, ptr, size);
         free(ptr);
         return newptr;
-
-        return nullptr;
     }
 }

@@ -1,0 +1,35 @@
+#! /bin/sh
+
+name=gtk3
+repology_id=gtk
+repology_srcname=gtk3
+version=3.24.50
+revision=1
+git_url="https://gitlab.gnome.org/GNOME/gtk.git"
+commit=93f05958bd683cb573236bd2a4cede68160595ca
+imagedeps="libglib2.0-dev libgdk-pixbuf-2.0 python3-packaging"
+hostdeps="gcc pkg-config"
+deps="core-libs at-spi2-core cairo glib2 gdk-pixbuf libx11 libxext libxcb libxinerama libxrender libxrandr libxfixes libxdamage pango fribidi libepoxy libxkbcommon fontconfig freetype2 libxi harfbuzz libxcursor gsettings-desktop-schemas dbus hicolor-icon-theme"
+
+configure() {
+    meson_configure \
+        -Dprint_backends=file \
+        -Dintrospection=false \
+        -Dx11_backend=true \
+        -Dbroadway_backend=true \
+        -Dwayland_backend=false \
+        -Dcolord=no
+}
+
+build() {
+    meson compile -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" meson install --no-rebuild
+
+    glib-compile-schemas "${dest_dir}${prefix}"/share/glib-2.0/schemas
+    rm "${dest_dir}${prefix}"/share/glib-2.0/schemas/gschemas.compiled
+
+    post_package_strip
+}

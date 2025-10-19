@@ -1,13 +1,19 @@
+#! /bin/sh
+
 name=pkg-config
 from_source=pkg-config
 revision=1
-imagedeps="gcc"
-hostdeps="automake autoconf libtool"
+imagedeps="build-essential"
 
-build() {
+configure() {
+        CFLAGS="$HOST_CFLAGS" \
+        CXXFLAGS="$HOST_CXXFLAGS" \
+        LDFLAGS="$HOST_LDFLAGS" \
     "${source_dir}"/configure \
         --prefix="${prefix}"
+}
 
+build() {
     make -j${parallelism}
 }
 

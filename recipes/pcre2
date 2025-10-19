@@ -1,31 +1,25 @@
-name=pcre2
-version=10.42
-revision=1
-tarball_url="https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${version}/pcre2-${version}.tar.gz"
-tarball_blake2b="19233ee4a63d3bc0828f68c646ecbeb8161c242e52c9242976d80b805d5863699766a8f3a23946ac50ced75f48aad6d948bd9aa3fdc7540bd9193065ea7ee9d1"
-source_hostdeps="automake autoconf libtool pkg-config"
-hostdeps="gcc autoconf automake libtool pkg-config"
-deps="core-libs bzip2 ncurses readline zlib"
+#! /bin/sh
 
-regenerate() {
-    autotools_recursive_regen
+name=pcre2
+version=10.46
+revision=1
+git_url="https://github.com/PCRE2Project/pcre2.git"
+commit=b2bd4254b379b9d7dc9a3dda060a7e27009ccdff
+hostdeps="gcc pkg-config"
+deps="core-libs bzip2 readline zlib"
+
+configure() {
+    cmake_configure \
+        -DPCRE2_BUILD_PCRE2_16=ON \
+        -DPCRE2_BUILD_PCRE2_32=ON
 }
 
 build() {
-    autotools_configure \
-        --enable-unicode \
-        --enable-jit \
-        --enable-pcre2-16 \
-        --enable-pcre2-32 \
-        --enable-pcre2grep-libz \
-        --enable-pcre2grep-libbz2 \
-        --enable-pcre2test-libreadline
-
-    make -j${parallelism}
+    cmake --build . -j${parallelism}
 }
 
 package() {
-    DESTDIR="${dest_dir}" make install
+    DESTDIR="${dest_dir}" cmake --install .
 
     post_package_strip
 }

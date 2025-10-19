@@ -1,25 +1,26 @@
-name=libxkbcommon
-version=1.6.0
-revision=1
-tarball_url="https://xkbcommon.org/download/libxkbcommon-${version}.tar.xz"
-tarball_blake2b="ffd373161f12ea6448a9206f57710355ab65b81ebab5dce74e4dfcee1bdc9175406fc434560648f5933b83cac163099c8564c3add6f51d34856def39ab077850"
-imagedeps="meson ninja doxygen"
-hostdeps="gcc pkg-config"
-deps="core-libs libxcb libxml xkeyboard-config"
+#! /bin/sh
 
-build() {
+name=libxkbcommon
+version=1.11.0
+revision=1
+git_url="https://github.com/xkbcommon/libxkbcommon.git"
+commit=0f9cefb1fedb23433666fa5d9045e48ff030c006
+hostdeps="gcc pkg-config"
+deps="core-libs libxcb libxml2 xkeyboard-config"
+
+configure() {
     meson_configure \
         -Dxkb-config-root="$prefix"/share/X11/xkb \
         -Denable-x11=true \
         -Denable-wayland=false
+}
 
-    ninja -j${parallelism}
+build() {
+    meson compile -j${parallelism}
 }
 
 package() {
-    DESTDIR="${dest_dir}" ninja install
-
-    mkdir -p "${dest_dir}${prefix}/share/X11/xkb"
+    DESTDIR="${dest_dir}" meson install --no-rebuild
 
     post_package_strip
 }

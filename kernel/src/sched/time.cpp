@@ -59,12 +59,10 @@ namespace sched {
     }
 
     isize syscall_sleep(const klib::TimeSpec *duration, klib::TimeSpec *remaining) {
-#if SYSCALL_TRACE
-        klib::printf("sleep({ %lu, %lu })\n", duration->seconds, duration->nanoseconds);
-#endif
+        log_syscall("sleep({ %lu, %lu })\n", duration->seconds, duration->nanoseconds);
         Timer timer(*duration);
         timer.arm();
-        auto ret = timer.event.await();
+        auto ret = timer.event.wait();
         timer.disarm();
         if (remaining)
             *remaining = timer.remaining;
@@ -75,9 +73,7 @@ namespace sched {
     }
 
     isize syscall_clock_gettime(clockid_t clock_id, klib::TimeSpec *time) {
-#if SYSCALL_TRACE
-        klib::printf("clock_gettime(%d, %#lX)\n", clock_id, (uptr)time);
-#endif
+        log_syscall("clock_gettime(%d, %#lX)\n", clock_id, (uptr)time);
         if (clock_id != CLOCK_REALTIME && clock_id != CLOCK_MONOTONIC)
             return -EINVAL;
         *time = get_clock(clock_id);
@@ -85,9 +81,7 @@ namespace sched {
     }
 
     isize syscall_clock_getres(clockid_t clock_id, klib::TimeSpec *res) {
-#if SYSCALL_TRACE
-        klib::printf("clock_getres(%d, %#lX)\n", clock_id, (uptr)res);
-#endif
+        log_syscall("clock_getres(%d, %#lX)\n", clock_id, (uptr)res);
         if (clock_id != CLOCK_REALTIME && clock_id != CLOCK_MONOTONIC)
             return -EINVAL;
         *res = klib::TimeSpec::from_microseconds(10);

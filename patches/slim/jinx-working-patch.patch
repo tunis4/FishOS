@@ -1,0 +1,44 @@
+diff --git slim-clean/app.cpp slim-workdir/app.cpp
+index 237477d..61dd255 100644
+--- slim-clean/app.cpp
++++ slim-workdir/app.cpp
+@@ -23,6 +23,7 @@
+ #include <sstream>
+ #include <vector>
+ #include <algorithm>
++#include <crypt.h>
+ 
+ #include "const.h"
+ #include "log.h"
+@@ -1113,7 +1114,10 @@ int App::StartServer()
+ 	server[0] = (char *)cfg->getOption("default_xserver").c_str();
+ 	string argOption = cfg->getOption("xserver_arguments");
+ 	/* Add mandatory -xauth option */
+-	argOption = argOption + " -auth " + cfg->getOption("authfile");
++    // Uncommenting the following line and thus passing auth to Xorg
++    // makes slim spawn Xorg in a loop, I dont know why, thus this
++    // hotfix.
++	// argOption = argOption + " -auth " + cfg->getOption("authfile");
+ 	char* args = new char[argOption.length()+2]; /* NULL plus vt */
+ 	strcpy(args, argOption.c_str());
+ 
+@@ -1155,10 +1159,12 @@ int App::StartServer()
+ 		}
+ 	}
+ 
++	/*
+ 	if (!hasVtSet && daemonmode)
+ 	{
+ 		server[argc++] = (char*)"vt07";
+ 	}
++	*/
+ 	server[argc] = NULL;
+ 
+ 	switch (ServerPID) {
+diff --git slim-workdir/cmake/modules/Platform/FishOS.cmake slim-workdir/cmake/modules/Platform/FishOS.cmake
+new file mode 100644
+index 0000000..54a156b
+--- /dev/null
++++ slim-workdir/cmake/modules/Platform/FishOS.cmake
+@@ -0,0 +1 @@
++include(Platform/UnixPaths)
