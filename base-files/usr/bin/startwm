@@ -1,22 +1,43 @@
-#!/usr/bin/bash
-export DISPLAY=":0"
-X &
-while [ 1 ]
-do
-  if [ -S /tmp/.X11-unix/X0 ]
-  then
-    break
-  fi
+#! /bin/bash
+# stty -echo -echoctl -isig -icanon min 0 time 0
 
-  if [ $SECONDS -gt 15 ]
-  then
-    echo timeout
-    exit 1
-  fi
+export CAJA_DEBUG=1
+export XDG_SESSION_TYPE="x11"
 
-  sleep 0.5
-done
-stty -echo -echoctl -isig -icanon min 0 time 0
-xterm -e "bash -l" &
-jwm &
-stty -echo -echoctl -isig -icanon min 0 time 0
+mkdir -p /root/.config/dconf
+
+metalog -N -B
+
+glib-compile-schemas /usr/share/glib-2.0/schemas/ >/dev/null
+gio-querymodules /usr/lib/gio/modules/ >/dev/null
+gdk-pixbuf-query-loaders --update-cache >/dev/null
+gtk-query-immodules-3.0 --update-cache >/dev/null
+update-mime-database /usr/share/mime
+
+dbus-daemon --system
+dbus-uuidgen --ensure
+
+startx
+
+# export DISPLAY=":0"
+# X &
+# while [ 1 ]
+# do
+#     if [ -S /tmp/.X11-unix/X0 ]
+#     then
+#         break
+#     fi
+
+#     if [ $SECONDS -gt 15 ]
+#     then
+#         echo timeout
+#         exit 1
+#     fi
+
+#     sleep 0.5
+# done
+
+# jwm &
+# mate-terminal &
+
+# stty -echo -echoctl -isig -icanon min 0 time 0

@@ -1,4 +1,5 @@
 #include <dev/input/ps2/ps2.hpp>
+#include <sched/timer/hpet.hpp>
 #include <klib/cstdio.hpp>
 
 namespace dev::input::ps2 {
@@ -43,7 +44,7 @@ namespace dev::input::ps2 {
         write_command(CTRL_CMD_READ_CONFIG);
         u8 config = read_data();
 
-        config &= ~(CONFIG_IRQ_P1 | CONFIG_CLOCK_DISABLE_P1 | CONFIG_TRANSLATION);
+        config &= ~(CONFIG_IRQ_P1 | CONFIG_IRQ_P2 | CONFIG_TRANSLATION);
 
         write_command(CTRL_CMD_WRITE_CONFIG);
         write_data(config);
@@ -70,7 +71,8 @@ namespace dev::input::ps2 {
         } else {
             write_command(CTRL_CMD_DISABLE_P2);
 
-            config &= ~(CONFIG_IRQ_P2 | CONFIG_CLOCK_DISABLE_P2);
+            config &= ~CONFIG_IRQ_P2;
+            config |= CONFIG_CLOCK_DISABLE_P2;
 
             write_command(CTRL_CMD_WRITE_CONFIG);
             write_data(config);
@@ -81,17 +83,17 @@ namespace dev::input::ps2 {
 
         write_command(CTRL_CMD_P1_SELF_TEST);
         result = read_data();
-        if (result == 0)
+        if (result == 0) {
             working_flag |= 1;
-        else
+        } else
             klib::printf("PS/2: Port 1 self test failed (expected 0, got %#X)\n", result);
 
         if (dual_port) {
             write_command(CTRL_CMD_P2_SELF_TEST);
             result = read_data();
-            if (result == 0)
+            if (result == 0) {
                 working_flag |= 2;
-            else
+            } else
                 klib::printf("PS/2: Port 2 self test failed (expected 0, got %#X)\n", result);
         }
 
@@ -102,9 +104,6 @@ namespace dev::input::ps2 {
 
         klib::printf("PS/2: Controller with %u ports\n", dual_port ? 2 : 1);
 
-        // reset and self test devices
-        // the ports leave this with scanning disabled
-
         if (working_flag & 1)
             write_command(CTRL_CMD_ENABLE_P1);
         if (working_flag & 2)
@@ -113,63 +112,13 @@ namespace dev::input::ps2 {
         write_command(CTRL_CMD_READ_CONFIG);
         config = read_data();
         if (working_flag & 1)
-            config |= CONFIG_IRQ_P1;
+            config |= CONFIG_IRQ_P1 | CONFIG_TRANSLATION;
         if (working_flag & 2)
             config |= CONFIG_IRQ_P2;
         write_command(CTRL_CMD_WRITE_CONFIG);
         write_data(config);
-
-        int connected_flag = 0;
-
-        if (working_flag & 1) {
-            if (!device_reset_self_test(1))
-                klib::printf("PS/2: Device self test for port 1 failed\n");
-            else
-                connected_flag |= 1;
-        }
-
-        if (working_flag & 2) {
-            if (!device_reset_self_test(2))
-                klib::printf("PS/2: Device self test for port 2 failed\n");
-            else
-                connected_flag |= 2;
-        }
-
-        if (connected_flag == 0) {
-            klib::printf("PS/2: No working devices\n");
-            return;
-        }
-
-        int ok_flag = 0;
-
-        // now initialize and enable the device stuff
-        if (connected_flag & 1) {
-            u8 identity;
-            if (!identify(1, &identity)) {
-                klib::printf("PS/2: Failed to identify port 1\n");
-            } else {
-                main_keyboard = new ps2::Keyboard();
-                ok_flag |= 1;
-            }
-        }
-
-        if (connected_flag & 2) {
-            u8 identity;
-            if (!identify(2, &identity)) {
-                klib::printf("PS/2: Failed to identify port 2\n");
-            } else {
-                main_mouse = new ps2::Mouse();
-                ok_flag |= 2;
-            }
-        }
-
-        if (ok_flag & 1)
-            config |= CONFIG_IRQ_P1;
-        if (ok_flag & 2)
-            config |= CONFIG_IRQ_P2;
-        config |= CONFIG_TRANSLATION;
-        write_command(CTRL_CMD_WRITE_CONFIG);
-        write_data(config);
+        main_keyboard = new ps2::Keyboard();
+        main_mouse = new ps2::Mouse();
     }
 
     bool out_buffer_empty() {
@@ -181,23 +130,54 @@ namespace dev::input::ps2 {
     }
 
     void flush_out_buffer() {
-        while (!out_buffer_empty())
-            cpu::in<u8>(PORT_DATA);
+        u8 status;
+        while ((status = cpu::in<u8>(PORT_STATUS)) & (1|2))
+            if (status & 2) cpu::in<u8>(PORT_DATA);
     }
 
-    void write_command(u8 cmd) {
-        while (in_buffer_full());
+    int write_command(u8 cmd) {
+        // klib::printf("write_command(%#X)\n", cmd);
+        int i = 0;
+        while (in_buffer_full() && i < TIMEOUT) {
+            sched::timer::hpet::stall_µs(50);
+            i += 50;
+        }
+        if (i == TIMEOUT) {
+            klib::printf("PS/2: Command write timeout\n");
+            return -1;
+        }
         cpu::out<u8>(PORT_COMMAND, cmd);
+        return 0;
     }
 
-    void write_data(u8 data) {
-        while (in_buffer_full());
+    int write_data(u8 data) {
+        // klib::printf("write_data(%#X)\n", data);
+        int i = 0;
+        while (in_buffer_full() && i < TIMEOUT) {
+            sched::timer::hpet::stall_µs(50);
+            i += 50;
+        }
+        if (i == TIMEOUT) {
+            klib::printf("PS/2: Data write timeout\n");
+            return -1;
+        }
         cpu::out<u8>(PORT_DATA, data);
+        return 0;
     }
 
-    u8 read_data() {
-        while (out_buffer_empty());
-        return cpu::in<u8>(PORT_DATA);
+    int read_data() {
+        int i = 0;
+        while (out_buffer_empty() && i < TIMEOUT) {
+            sched::timer::hpet::stall_µs(50);
+            i += 50;
+        }
+        if (i == TIMEOUT) {
+            klib::printf("PS/2: Data read timeout\n");
+            return -1;
+        }
+        u8 data = cpu::in<u8>(PORT_DATA);
+        // klib::printf("read_data() = %#X\n", data);
+        return data;
     }
 
     void device_command(int port, u8 command) {

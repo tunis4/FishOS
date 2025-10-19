@@ -1,32 +1,47 @@
+#! /bin/sh
+
 name=libiconv
-version=1.17
+version=1.18
 revision=1
-tarball_url="https://ftp.gnu.org/gnu/libiconv/libiconv-${version}.tar.gz"
-tarball_blake2b="1d317dd0655c680a2082c38561cdff51ac1a9181d4734a8bb1e86861dfd66f1a6c0846a90b5b88f3b38b1fa9983d9e563551f27e95a8e329896b71becceae52b"
-source_hostdeps="automake autoconf libtool pkg-config"
+tarball_url="https://ftpmirror.gnu.org/gnu/libiconv/libiconv-${version}.tar.gz"
+tarball_blake2b="374e7a7299d4814d372d8e63246c11f403f9fc990be5b129d016b92a875d2f8e9697ef4ef5cbd2e7b7fc97dff427c6b8abf6a99da792fcabd6fc36af38cd4723"
 imagedeps="binutils"
-hostdeps="gcc autoconf automake libtool pkg-config"
-deps="mlibc libgcc libstdc++"
+hostdeps="gcc pkg-config"
+deps="mlibc libgcc libstdc++ libatomic"
 
-regenerate() {
-    cp /usr/local/share/aclocal/libtool.m4 ./m4/
-    cp /usr/local/share/aclocal/libtool.m4 ./libcharset/m4/
-    cp /usr/local/share/libtool/build-aux/ltmain.sh ./build-aux/
-    cp /usr/local/share/libtool/build-aux/ltmain.sh ./libcharset/build-aux/
-    cp /usr/local/share/aclocal/ltversion.m4 ./m4/
-    cp /usr/local/share/aclocal/ltversion.m4 ./libcharset/m4/
+prepare() {
+    autotools_recursive_regen
+}
 
-    autotools_recursive_regen -I"${source_dir}"/m4 -I"${source_dir}"/srcm4
+configure() {
+    autotools_configure
 }
 
 build() {
-    autotools_configure
-
     make -j${parallelism}
 }
 
 package() {
     DESTDIR="${dest_dir}" make install
+
+    # Move documentation into a sub-directory
+    mkdir -p "${dest_dir}${prefix}/share/doc/libiconv"
+    mv "${dest_dir}${prefix}/share/doc"/*.html "${dest_dir}${prefix}/share/doc/libiconv/"
+
+    mkdir -p "${dest_dir}${prefix}/lib/pkgconfig"
+    cat <<EOF >"${dest_dir}${prefix}/lib/pkgconfig/iconv.pc"
+prefix=${prefix}
+exec_prefix=\${prefix}
+bindir=\${exec_prefix}/bin
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: iconv
+Description: libiconv library
+Version: ${version}
+Libs: -L\${libdir} -liconv
+Cflags: -I\${includedir}
+EOF
 
     post_package_strip
 }

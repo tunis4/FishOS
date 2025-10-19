@@ -36,4 +36,5 @@ namespace userland {
     isize syscall_sigmask(int how, const u64 *set, u64 *retrieve);
     isize syscall_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
     isize syscall_kill(pid_t pid, int signal);
+    isize syscall_sigaltstack(const stack_t *new_signal_stack, stack_t *old_signal_stack);
 }

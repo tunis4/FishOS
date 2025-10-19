@@ -19,13 +19,14 @@
 
 namespace sched {
     constexpr usize sched_freq = 200; // Hz
-    constexpr usize kernel_stack_size = 0x10000;
-    constexpr usize user_stack_size = 0x100000;
+    constexpr usize kernel_stack_size = 64 * 1024;
+    constexpr usize user_stack_size = 8 * 1024 * 1024;
     static klib::ListHead sched_list_head;
     static Process *kernel_process;
     static Thread *idle_thread;
+    static Process *init_process;
 
-    static usize num_threads = 0, first_free_tid = 0;
+    static usize num_threads = 0, first_free_tid = 2;
 
     static klib::Vector<Thread*>& get_thread_table() {
         static klib::Vector<Thread*> thread_table;
@@ -34,14 +35,18 @@ namespace sched {
 
     static int allocate_tid() {
         auto &thread_table = get_thread_table();
+        if (thread_table.size() == 0) {
+            thread_table.push_back(nullptr);
+            thread_table.push_back(nullptr);
+        }
         num_threads++;
         for (usize i = first_free_tid; i < thread_table.size(); i++) {
             if (thread_table[i] == nullptr) {
-                first_free_tid = i;
+                first_free_tid = i + 1;
                 return i;
             }
         }
-        first_free_tid = thread_table.size();
+        first_free_tid = thread_table.size() + 1;
         thread_table.push_back(nullptr);
         return thread_table.size() - 1;
     }
@@ -72,38 +77,39 @@ namespace sched {
 
     Thread::Thread(Process *process, int tid) : tid(tid), process(process) {
         process->thread_list.add_before(&thread_link);
+        process->num_living_threads++;
         get_thread_table()[tid] = this;
         state = BLOCKED;
     }
 
     Thread::~Thread() {
+        ASSERT(state == ZOMBIE);
         get_thread_table()[tid] = nullptr;
         thread_link.remove();
+        clear_listeners();
         if (extended_state)
             klib::free(extended_state);
     }
 
     Process::Process() {
         pid = allocate_tid();
-        num_file_descriptors = 0;
-        first_free_fdnum = 0;
         thread_list.init();
         children_list.init();
-
-        // these should be correctly initiliazed after construction
-        parent = this;
-        process_group_leader = this;
-        process_group_list.init();
-        session_leader = this;
     }
 
     Process::~Process() {
-        for (usize i = 0; i < file_descriptors.size(); i++)
-            if (file_descriptors[i].get_description() != nullptr)
-                file_descriptors[i].close(this, i);
+        ASSERT(is_zombie);
+        sibling_link.remove();
+        group_link.remove();
+
+        Thread *thread;
+        LIST_FOR_EACH_SAFE(thread, &this->thread_list, thread_link) {
+            if (thread->state != Thread::ZOMBIE)
+                terminate_thread(thread);
+            delete thread;
+        }
 
         delete pagemap;
-        // klib::printf("free pages after process cleanup: %lu\n", pmm::stats.total_free_pages);
     }
 
     Thread* Thread::get_from_tid(int tid) {
@@ -114,7 +120,7 @@ namespace sched {
     }
 
     void Thread::send_signal(int signal) {
-        pending_signals |= 1 << signal;
+        pending_signals |= 1 << (signal - 1);
         enqueue_thread(this, signal);
     }
 
@@ -122,11 +128,78 @@ namespace sched {
         return pending_signals & ~signal_mask;
     }
 
-    void Process::send_process_group_signal(int signal) {
-        sched::Process *target;
-        LIST_FOR_EACH(target, &process_group_leader->process_group_list, process_group_list)
+    void Thread::clear_listeners() {
+        for (auto *listener : listeners) {
+            if (!listener->listener_link.is_invalid()) {
+                listener->listener_link.remove();
+                listener->event->num_listeners--;
+            }
+            delete listener;
+        }
+        listeners.clear();
+    }
+
+    ProcessGroup::ProcessGroup(Session *session, Process *leader_process) : session(session), leader_process(leader_process) {
+        process_list.init();
+        session->process_group_list.add_before(&session_link);
+    }
+
+    void ProcessGroup::add_process(Process *process) {
+        if (process->group)
+            process->group_link.remove();
+        this->process_list.add_before(&process->group_link);
+        process->group = this;
+    }
+
+    void ProcessGroup::send_signal(int signal) {
+        Process *target;
+        LIST_FOR_EACH(target, &process_list, group_link) {
+            ASSERT(target->group == this);
             target->get_main_thread()->send_signal(signal);
-        process_group_leader->get_main_thread()->send_signal(signal);
+        }
+    }
+
+    void Process::set_parent(Process *new_parent) {
+        this->parent = new_parent;
+        if (!this->sibling_link.is_invalid()) this->sibling_link.remove();
+        new_parent->children_list.add_before(&this->sibling_link);
+
+        new_parent->group->add_process(this);
+    }
+
+    void Process::zombify(int terminate_signal) {
+        klib::InterruptLock interrupt_guard;
+
+        is_zombie = true;
+        if (terminate_signal != -1)
+            status = W_EXITCODE(0, terminate_signal);
+
+        Process *child;
+        LIST_FOR_EACH_SAFE(child, &children_list, sibling_link) {
+            child->set_parent(init_process);
+        }
+
+        for (usize i = 0; i < file_descriptors.size(); i++)
+            if (file_descriptors[i].get_description() != nullptr)
+                file_descriptors[i].close(this, i);
+
+        zombie_event.trigger();
+        parent->get_main_thread()->send_signal(SIGCHLD);
+    }
+
+    void Process::print_file_descriptors() {
+        klib::PrintGuard print_guard;
+        klib::printf_unlocked("Printing process %d file descriptors:\n", this->pid);
+        for (usize i = 0; i < file_descriptors.size(); i++) {
+            if (auto *description = file_descriptors[i].get_description()) {
+                klib::printf_unlocked("FD %lu: ", i);
+                if (description->entry)
+                    description->entry->print_path(klib::putchar);
+                else
+                    klib::printf_unlocked("(null entry)");
+                klib::putchar('\n');
+            }
+        }
     }
 
     Thread* new_kernel_thread(void (*func)(), bool enqueue) {
@@ -198,7 +271,22 @@ namespace sched {
         saved_user_stack = user_stack;
     }
 
-    static isize user_exec(Process *process, vfs::VNode *elf_file, char **argv, char **envp, int argv_len, int envp_len) {
+    static isize user_exec(Process *process, const char *path, char **argv, char **envp, int argv_len, int envp_len) {
+        vfs::VNode *elf_file;
+        {
+            vfs::Entry *starting_point = path[0] != '/' ? process->cwd : nullptr;
+            auto *entry = vfs::path_to_entry(path, starting_point);
+            if (entry->vnode == nullptr)
+                return -ENOENT;
+            if (entry->vnode->node_type != vfs::NodeType::REGULAR)
+                return -EACCES;
+            elf_file = entry->vnode;
+        }
+
+        decltype(process->name) old_name;
+        klib::strncpy(old_name, process->name, sizeof(process->name));
+        klib::strncpy(process->name, path, sizeof(process->name));
+
         asm volatile("cli");
 
         Thread *thread = process->get_main_thread();
@@ -211,14 +299,14 @@ namespace sched {
                 process->pagemap = old_pagemap;
                 process->mmap_anon_base = old_mmap_anon_base;
                 old_pagemap->activate();
+                klib::strncpy(process->name, old_name, sizeof(process->name));
             }
         };
 
-        process->pagemap = new vmm::Pagemap();
-        process->pagemap->pml4 = (u64*)(pmm::alloc_pages(1) + vmm::hhdm);
+        process->pagemap = new mem::Pagemap();
+        process->pagemap->pml4 = (u64*)(pmm::alloc_pages(1) + mem::hhdm);
         memset(process->pagemap->pml4, 0, 0x1000);
         process->pagemap->map_kernel();
-        process->pagemap->range_list.init();
         process->mmap_anon_base = 0;
 
         process->pagemap->activate();
@@ -236,12 +324,12 @@ namespace sched {
                 auto *entry = vfs::path_to_entry(ld_path, starting_point);
                 if (entry->vnode == nullptr)
                     return err = -ENOENT;
-                if (entry->vnode->type == vfs::NodeType::DIRECTORY)
+                if (entry->vnode->node_type == vfs::NodeType::DIRECTORY)
                     return err = -EISDIR;
                 ld_file = entry->vnode;
             }
 
-            if (isize err = elf::load(process->pagemap, ld_file, 0x40000000, nullptr, &ld_auxv, &process->mmap_anon_base); err < 0) {
+            if (err = elf::load(process->pagemap, ld_file, 0x40000000, nullptr, &ld_auxv, &process->mmap_anon_base); err < 0) {
                 if (err == -ENOEXEC)
                     err = -ELIBBAD;
                 return err;
@@ -250,9 +338,10 @@ namespace sched {
 
         process->mmap_anon_base = 0x1000000000; // idk anymore
 
-        process->pagemap->map_range(process->mmap_anon_base, user_stack_size, PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE | PAGE_NO_EXECUTE, vmm::MappedRange::Type::ANONYMOUS);
+        process->pagemap->map_anonymous(process->mmap_anon_base, user_stack_size, PAGE_PRESENT | PAGE_USER | PAGE_WRITABLE | PAGE_NO_EXECUTE);
         process->mmap_anon_base += user_stack_size;
         thread->user_stack = process->mmap_anon_base;
+        process->mmap_anon_base += 0x10000; // guard
 
         uptr entry = ld_path ? ld_auxv.at_entry : auxv.at_entry;
         thread->init_user(entry, thread->user_stack);
@@ -260,6 +349,11 @@ namespace sched {
         cpu::write_fs_base(thread->fs_base);
 
         uptr *stack = (uptr*)thread->user_stack;
+
+        usize path_length = klib::strlen(path);
+        stack = (uptr*)((uptr)stack - path_length - 1);
+        uptr *execfn = stack;
+        memcpy(execfn, path, path_length);
 
         for (int i = 0; i < envp_len; i++) {
             usize length = klib::strlen(envp[i]);
@@ -284,8 +378,11 @@ namespace sched {
         stack -= 2; stack[0] = AT_PHDR,   stack[1] = auxv.at_phdr;
         stack -= 2; stack[0] = AT_PHENT,  stack[1] = auxv.at_phent;
         stack -= 2; stack[0] = AT_PHNUM,  stack[1] = auxv.at_phnum;
+        stack -= 2; stack[0] = AT_PAGESZ, stack[1] = 0x1000;
+        stack -= 2; stack[0] = AT_EXECFN, stack[1] = (uptr)execfn;
 
         uptr old_stack = thread->user_stack;
+        old_stack -= path_length + 1;
 
         *(--stack) = 0;
         stack -= envp_len;
@@ -315,17 +412,30 @@ namespace sched {
         }
 
         memset(process->signal_actions, 0, sizeof(Process::signal_actions));
+        thread->signal_alt_stack.ss_sp = nullptr;
+        thread->signal_alt_stack.ss_flags = SS_DISABLE;
+        thread->signal_alt_stack.ss_size = 0;
+
+        klib::strncpy(thread->name, process->name, sizeof(thread->name));
+
+        process->has_performed_execve = true;
 
         delete old_pagemap;
 
         return 0;
     }
 
-    Process* new_user_process(vfs::VNode *elf_file, bool enqueue, int argc, char **argv) {
+    Process* create_init_process(const char *path, int argc, char **argv) {
         klib::InterruptLock guard;
 
-        Process *process = new Process();
-        Thread *thread = new Thread(process, process->pid);
+        init_process = new Process();
+        init_process->pid = 1;
+
+        auto *session = new Session();
+        init_process->group = new ProcessGroup(session, init_process);
+        session->leader_group = init_process->group;
+
+        Thread *thread = new Thread(init_process, init_process->pid);
 
         if (!thread->kernel_stack) {
             void *kernel_stack = klib::malloc(kernel_stack_size);
@@ -337,31 +447,28 @@ namespace sched {
         auto *console_entry = vfs::path_to_entry("/dev/console");
         auto *console = (dev::tty::ConsoleDevNode*)console_entry->vnode;
         ASSERT(console != nullptr);
-        process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_RDONLY), 0)); // stdin
-        process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_WRONLY), 0)); // stdout
-        process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_WRONLY), 0)); // stderr
-        process->num_file_descriptors = 3;
-        process->first_free_fdnum = 3;
-        process->cwd = vfs::get_root_entry();
+        init_process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_RDONLY), 0)); // stdin
+        init_process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_WRONLY), 0)); // stdout
+        init_process->file_descriptors.push_back(vfs::FileDescriptor(new vfs::FileDescription(console_entry, O_WRONLY), 0)); // stderr
+        init_process->num_file_descriptors = 3;
+        init_process->first_free_fdnum = 3;
+        init_process->cwd = vfs::get_root_entry();
 
-        console->set_controlling_terminal(process, console);
+        console->set_controlling_terminal(init_process, console);
 
         char *envp[] = { nullptr };
-        auto ret = user_exec(process, elf_file, argv, envp, argc, 0);
+        auto ret = user_exec(init_process, path, argv, envp, argc, 0);
         ASSERT(ret >= 0);
 
-        if (enqueue) {
-            thread->state = Thread::READY;
-            sched_list_head.add_before(&thread->sched_link);
-        }
-
-        return process;
+        thread->state = Thread::READY;
+        sched_list_head.add_before(&thread->sched_link);
+        return init_process;
     }
 
     void init() {
         sched_list_head.init();
         kernel_process = new Process();
-        kernel_process->pagemap = &vmm::kernel_pagemap;
+        kernel_process->pagemap = &mem::vmm->kernel_pagemap;
 
         idle_thread = new_kernel_thread([] {
             while (true)
@@ -382,7 +489,7 @@ namespace sched {
             thread->state = Thread::STOPPED;
             thread->process->status = W_EXITCODE(stop_signal, 0x7f);
             thread->process->stopped_event.trigger();
-            // thread->process->parent->get_main_thread()->send_signal(SIGCHLD);
+            thread->process->parent->get_main_thread()->send_signal(SIGCHLD);
         } else {
             thread->state = Thread::BLOCKED;
         }
@@ -392,7 +499,7 @@ namespace sched {
         klib::InterruptLock guard;
         if (thread->state != Thread::BLOCKED && thread->state != Thread::STOPPED)
             return;
-        if (thread->state == Thread::STOPPED && signal == -1)
+        if (thread->state == Thread::STOPPED && signal != SIGCONT)
             return;
         thread->enqueued_by_signal = signal;
         sched_list_head.add_before(&thread->sched_link);
@@ -402,18 +509,31 @@ namespace sched {
 
     void terminate_thread(Thread *thread, int terminate_signal) {
         klib::InterruptLock guard;
-        ASSERT(thread->state == Thread::READY || thread->state == Thread::RUNNING);
-        thread->sched_link.remove();
+        if (thread->state == Thread::ZOMBIE)
+            return;
+        if (thread->state == Thread::READY || thread->state == Thread::RUNNING)
+            thread->sched_link.remove();
         thread->state = Thread::ZOMBIE;
-        if (terminate_signal != -1)
-            thread->process->status = W_EXITCODE(0, terminate_signal);
-        thread->process->zombie_event.trigger();
-        // thread->process->parent->get_main_thread()->send_signal(SIGCHLD);
+
+        thread->process->num_living_threads--;
+        if (thread->process->num_living_threads == 0)
+            thread->process->zombify(terminate_signal);
     }
 
-    [[noreturn]] void terminate_self() {
+    void terminate_process(Process *process, int terminate_signal) {
         klib::InterruptLock guard;
-        terminate_thread(cpu::get_current_thread());
+        Thread *thread;
+        LIST_FOR_EACH_SAFE(thread, &process->thread_list, thread_link) {
+            terminate_thread(thread, terminate_signal);
+        }
+    }
+
+    [[noreturn]] void terminate_self(bool whole_process) {
+        klib::InterruptLock guard;
+        if (whole_process)
+            terminate_process(cpu::get_current_thread()->process);
+        else
+            terminate_thread(cpu::get_current_thread());
         yield();
         klib::unreachable();
     }
@@ -475,7 +595,9 @@ namespace sched {
         cpu->running_thread = current_thread;
         cpu::write_fs_base(current_thread->fs_base);
 
-        current_thread->process->pagemap->activate();
+        auto *pagemap = current_thread->process->pagemap;
+        if (pagemap != &mem::vmm->kernel_pagemap) // kernel pages are global so no need to switch
+            pagemap->activate();
 
         if (current_thread->enqueued_by_signal == SIGCONT)
             if (current_thread->state == Thread::STOPPED)
@@ -501,17 +623,13 @@ namespace sched {
     }
 
     [[noreturn]] void syscall_exit(int status) {
-#if SYSCALL_TRACE
-        klib::printf("exit(%d)\n", status);
-#endif
+        log_syscall("exit(%d)\n", status);
         cpu::get_current_thread()->process->status = W_EXITCODE(status, 0);
-        terminate_self();
+        terminate_self(true);
     }
     
     isize syscall_fork(cpu::syscall::SyscallState *state) {
-#if SYSCALL_TRACE
-        klib::printf("fork()\n");
-#endif
+        log_syscall("fork()\n");
         // klib::printf("free pages before fork: %lu\n", pmm::stats.total_free_pages);
 
         auto *cpu = cpu::get_current_cpu();
@@ -547,23 +665,26 @@ namespace sched {
         new_thread->kernel_stack = (uptr)kernel_stack + kernel_stack_size;
         new_thread->saved_kernel_stack = new_thread->kernel_stack;
 
+        new_thread->signal_mask = old_thread->signal_mask;
+        new_thread->signal_alt_stack = old_thread->signal_alt_stack;
+
         new_process->cwd = old_process->cwd;
         for (auto &old_file_descriptor : old_process->file_descriptors) {
             if (old_file_descriptor.get_description())
-                new_process->file_descriptors.push_back(old_file_descriptor.duplicate());
+                new_process->file_descriptors.push_back(old_file_descriptor.duplicate(true));
             else
                 new_process->file_descriptors.emplace_back();
         }
         new_process->num_file_descriptors = old_process->num_file_descriptors;
         new_process->first_free_fdnum = old_process->first_free_fdnum;
 
+        new_process->signal_entry = old_process->signal_entry;
         memcpy(new_process->signal_actions, old_process->signal_actions, sizeof(Process::signal_actions));
 
-        new_process->parent = old_process;
-        old_process->children_list.add_before(&new_process->sibling_link);
-        new_process->process_group_leader = old_process->process_group_leader;
-        old_process->process_group_list.add_before(&new_process->process_group_list);
-        new_process->session_leader = old_process->session_leader;
+        klib::strncpy(new_process->name, old_process->name, sizeof(new_process->name));
+        klib::strncpy(new_thread->name, new_process->name, sizeof(new_thread->name));
+
+        new_process->set_parent(old_process);
 
         new_thread->state = Thread::READY;
         sched_list_head.add_before(&new_thread->sched_link);
@@ -572,25 +693,13 @@ namespace sched {
     }
 
     isize syscall_execve(cpu::syscall::SyscallState *state, const char *path, const char **argv, const char **envp) {
-#if SYSCALL_TRACE
-        klib::printf("execve(\"%s\")\n", path);
-#endif
+        log_syscall("execve(\"%s\")\n", path);
         Thread *thread = cpu::get_current_thread();
         Process *process = thread->process;
 
-        vfs::VNode *elf_file;
-        {
-            vfs::Entry *starting_point = path[0] != '/' ? process->cwd : nullptr;
-            auto *entry = vfs::path_to_entry(path, starting_point);
-            if (entry->vnode == nullptr)
-                return -ENOENT;
-            if (entry->vnode->type != vfs::NodeType::REGULAR)
-                return -EACCES;
-            elf_file = entry->vnode;
-        }
-
-        // FIXME: rollback if execve fails
-        klib::strncpy(process->name, path, sizeof(process->name));
+        usize path_length = klib::strlen(path);
+        char *path_copy = new char[path_length + 1];
+        memcpy(path_copy, path, path_length + 1);
 
         int envp_len;
         for (envp_len = 0; envp[envp_len] != NULL; envp_len++) {}
@@ -613,6 +722,7 @@ namespace sched {
         }
 
         defer {
+            delete[] path_copy;
             for (int i = 0; i < argv_len; i++)
                 delete[] argv_copy[i];
             delete[] argv_copy;
@@ -621,7 +731,7 @@ namespace sched {
             delete[] envp_copy;
         };
 
-        auto ret = user_exec(process, elf_file, argv_copy, envp_copy, argv_len, envp_len);
+        auto ret = user_exec(process, path_copy, argv_copy, envp_copy, argv_len, envp_len);
         if (ret < 0)
             return ret;
 
@@ -633,16 +743,12 @@ namespace sched {
     }
 
     void syscall_set_fs_base(uptr value) {
-#if SYSCALL_TRACE
-        klib::printf("set_fs_base(%#lX)\n", value);
-#endif
+        log_syscall("set_fs_base(%#lX)\n", value);
         cpu::write_fs_base(value);
     }
 
     isize syscall_waitpid(int pid, int *status, int options) {
-#if SYSCALL_TRACE
-        klib::printf("waitpid(%d, %#lX, %d)\n", pid, (uptr)status, options);
-#endif
+        log_syscall("waitpid(%d, %#lX, %d)\n", pid, (uptr)status, options);
         if (options & ~(WNOHANG | WUNTRACED | WCONTINUED))
             klib::printf("waitpid: ignoring options %#X\n", options);
 
@@ -651,8 +757,11 @@ namespace sched {
 
         klib::Vector<Process*> target_children;
         klib::Vector<Event*> events;
+        isize which_event = 0;
 
-        auto add_child = [&] (Process *child) {
+        auto add_child = [&] (Process *child) -> bool {
+            if (child->is_zombie) return true;
+
             target_children.push_back(child);
             events.push_back(&child->zombie_event);
             if (options & WUNTRACED) {
@@ -663,6 +772,7 @@ namespace sched {
                 target_children.push_back(child);
                 events.push_back(&child->continued_event);
             }
+            return false;
         };
 
         if (pid == -1) {
@@ -670,69 +780,92 @@ namespace sched {
                 return -ECHILD;
 
             Process *child;
-            LIST_FOR_EACH(child, &current_process->children_list, sibling_link)
-                add_child(child);
+            LIST_FOR_EACH(child, &current_process->children_list, sibling_link) {
+                if (add_child(child)) {
+                    target_child = child;
+                    goto found_child;
+                }
+            }
         } else if (pid > 0) {
             auto &thread_table = get_thread_table();
             if (pid >= (int)thread_table.size())
                 return -ECHILD;
 
-            Process *child = thread_table[pid]->process;
-            if (child->parent != current_process)
-                return -ECHILD;
+            Thread *target_thread = thread_table[pid];
+            if (target_thread == nullptr) return -ECHILD;
 
-            add_child(child);
+            Process *child = target_thread->process;
+            if (child->parent != current_process) return -ECHILD;
+
+            if (add_child(child)) {
+                target_child = child;
+                goto found_child;
+            }
         } else {
             klib::printf("waitpid: unhandled pid %d\n", pid);
             return 0;
         }
 
-        isize which = Event::await(events, options & WNOHANG);
-        if (which < 0)
-            return which;
+        which_event = Event::wait(events, options & WNOHANG);
+        if (which_event == -EWOULDBLOCK)
+            return 0;
+        if (which_event < 0)
+            return which_event;
+        target_child = target_children[which_event];
 
-        target_child = target_children[which];
+    found_child:
         int child_pid = target_child->pid;
 
         if (status)
             *status = target_child->status;
 
-        if (!WIFSTOPPED(target_child->status) && !WIFCONTINUED(target_child->status)) {
-            // klib::printf("deleting child %d\n", target_child->pid);
-            target_child->sibling_link.remove();
+        if (target_child->is_zombie)
             delete target_child;
-        }
 
         return child_pid;
     }
 
-    isize syscall_uname(struct utsname *buf) {
-#if SYSCALL_TRACE
-        klib::printf("uname(%#lX)\n", (uptr)buf);
-#endif
-        klib::strncpy(buf->sysname, "FishOS", sizeof(buf->sysname));
-        klib::strncpy(buf->nodename, "fishpc", sizeof(buf->nodename));
-        klib::strncpy(buf->release, "0.0.1", sizeof(buf->release));
-        klib::strncpy(buf->version, __DATE__ " " __TIME__, sizeof(buf->version));
-        klib::strncpy(buf->machine, "x86_64", sizeof(buf->machine));
-        return 0;
-    }
-
     isize syscall_thread_spawn(void *entry, void *stack) {
-#if SYSCALL_TRACE
-        klib::printf("thread_spawn(%#lX, %#lX)\n", (uptr)entry, (uptr)stack);
-#endif
+        log_syscall("thread_spawn(%#lX, %#lX)\n", (uptr)entry, (uptr)stack);
         Process *process = cpu::get_current_thread()->process;
         Thread *new_thread = new Thread(process, allocate_tid());
         new_thread->init_user((uptr)entry, (uptr)stack);
+        klib::strncpy(new_thread->name, process->name, sizeof(new_thread->name));
         enqueue_thread(new_thread);
         return new_thread->tid;
     }
 
     [[noreturn]] void syscall_thread_exit() {
-#if SYSCALL_TRACE
-        klib::printf("thread_exit()\n");
-#endif
-        terminate_self();
+        log_syscall("thread_exit()\n");
+        terminate_self(false);
+    }
+
+    mode_t syscall_umask(mode_t mode) {
+        log_syscall("umask(%u)\n", mode);
+        Process *process = cpu::get_current_thread()->process;
+        mode_t old = process->umask;
+        process->umask = mode;
+        return old;
+    }
+
+    isize syscall_thread_getname(int tid, char *name, usize size) {
+        log_syscall("thread_getname(%d, %#lX, %lu)\n", tid, (uptr)name, size);
+        auto *thread = Thread::get_from_tid(tid);
+        klib::strncpy(name, thread->name, klib::min(size, sizeof(thread->name)));
+        name[size - 1] = 0;
+        return 0;
+    }
+
+    isize syscall_thread_setname(int tid, const char *name) {
+        log_syscall("thread_setname(%d, \"%s\")\n", tid, name);
+        auto *thread = Thread::get_from_tid(tid);
+        klib::strncpy(thread->name, name, sizeof(thread->name));
+        thread->name[sizeof(thread->name) - 1] = 0;
+        return 0;
+    }
+
+    void syscall_sched_yield() {
+        log_syscall("sched_yield()\n");
+        yield();
     }
 }

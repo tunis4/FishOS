@@ -1,14 +1,13 @@
+#! /bin/sh
+
 name=libintl
+skip_pkg_check=yes
 from_source=gettext
 revision=1
-hostdeps="gcc automake autoconf libtool pkg-config"
-deps="mlibc libgcc libstdc++ libiconv"
+hostdeps="gcc pkg-config"
+deps="mlibc libgcc libstdc++ libatomic libiconv"
 
-build() {
-        ACLOCAL=true \
-        AUTOCONF=true \
-        AUTOMAKE=true \
-        AUTOHEADER=true \
+configure() {
     autotools_configure \
         --without-emacs \
         --without-lispdir \
@@ -28,7 +27,9 @@ build() {
         --without-xz
 
     sed -i 's/touch $@//g' gettext-runtime/intl/Makefile
+}
 
+build() {
     make -C gettext-runtime/intl -j${parallelism}
 }
 

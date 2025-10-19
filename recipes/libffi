@@ -1,19 +1,22 @@
+#! /bin/sh
+
 name=libffi
-version=3.4.4
+version=3.5.1
 revision=1
 tarball_url="https://github.com/libffi/libffi/releases/download/v${version}/libffi-${version}.tar.gz"
-tarball_blake2b="189fe1ffe9507f204581b0ab09995dc7e7b761bb4eac7e338e9f5ff81431aebcef6c182c1839c9f9acb2706697a260c67e6d1351cf7e2aed7c4eb5d694f6f8fd"
-source_hostdeps="automake autoconf libtool pkg-config"
-hostdeps="gcc autoconf automake libtool pkg-config"
+tarball_blake2b="eaeb04beeb4ab6e0ef5652175d5c9d29a18b6f1edbf05db819a3a6ac9c8ed47de32c54fca4c3a9a476283c0771650d5a577e7868f16c671ee46e25db27369066"
+hostdeps="gcc pkg-config"
 deps="core-libs"
 
-regenerate() {
+prepare() {
     autotools_recursive_regen
 }
 
-build() {
+configure() {
     autotools_configure
+}
 
+build() {
     make -j${parallelism}
 }
 

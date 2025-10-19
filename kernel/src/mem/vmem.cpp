@@ -188,17 +188,8 @@ namespace mem::vmem {
         }
     }
 
-    static u64 murmur64(u64 h) {
-        h ^= h >> 33;
-        h *= 0xff51afd7ed558ccd;
-        h ^= h >> 33;
-        h *= 0xc4ceb9fe1a85ec53;
-        h ^= h >> 33;
-        return h;
-    }
-
     klib::ListHead* Arena::hash_bucket_for_addr(uptr addr) {
-        return &hash_table[murmur64(addr) % num_hash_buckets];
+        return &hash_table[klib::hash(addr) % num_hash_buckets];
     }
 
     void Arena::hash_table_insert(BoundaryTag *segment) {

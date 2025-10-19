@@ -3,6 +3,7 @@
 #include <klib/common.hpp>
 #include <klib/list.hpp>
 #include <klib/timespec.hpp>
+#include <klib/cstdio.hpp>
 #include <sched/event.hpp>
 #include <asm/ioctls.h>
 #include <sys/poll.h>
@@ -15,14 +16,16 @@ namespace sched { struct Process; }
 
 namespace vfs {
     enum class NodeType : u8 {
-        NONE,
+        NONE, // used for creating hard links
         REGULAR,
         DIRECTORY,
         CHAR_DEVICE,
         BLOCK_DEVICE,
         SYMLINK,
         FIFO,
-        SOCKET
+        SOCKET,
+        INOTIFY,
+        EVENTFD
     };
     static constexpr inline bool is_special(NodeType type) { return type != NodeType::REGULAR && type != NodeType::DIRECTORY; }
     static constexpr inline bool is_device(NodeType type) { return type == NodeType::CHAR_DEVICE && type != NodeType::BLOCK_DEVICE; }
@@ -31,24 +34,30 @@ namespace vfs {
     struct FileDescription;
 
     struct VNode {
-        NodeType type;
+        NodeType node_type;
         Filesystem *fs;
         Filesystem *fs_mounted_here;
-        void *fs_data;
+        void *fs_data = nullptr; // must be allocated with malloc
         sched::Event *event = nullptr;
         klib::TimeSpec creation_time, modification_time, access_time;
 
-        virtual ~VNode() {}
+        void increment_ref_count() { ref_count++; }
+        void decrement_ref_count() { ref_count--; } // if (ref_count == 0) delete this; }
+
+        virtual ~VNode();
         virtual isize  open(FileDescription *fd) { return 0; }
         virtual  void close(FileDescription *fd) {}
         virtual isize  read(FileDescription *fd, void *buf, usize count, usize offset) { return -ENOTSUP; }
         virtual isize write(FileDescription *fd, const void *buf, usize count, usize offset) { return -ENOTSUP; }
         virtual isize  seek(FileDescription *fd, usize position, isize offset, int whence) { return -ENOTSUP; }
-        virtual isize  poll(FileDescription *fd, isize events) { return -ENOTSUP; }
-        virtual isize  mmap(FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) { return -EACCES; }
+        virtual isize  poll(FileDescription *fd, isize events) { return POLLIN | POLLOUT; }
+        virtual isize  mmap(FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) { return -ENODEV; }
         virtual isize ioctl(FileDescription *fd, usize cmd, void *arg) {
             return cmd == TCGETS || cmd == TCSETS || cmd == TIOCSCTTY || cmd == TIOCGWINSZ ? -ENOTTY : -EINVAL;
         }
+
+    private:
+        i32 ref_count = 0;
     };
 
     struct Entry {
@@ -56,7 +65,6 @@ namespace vfs {
         Entry *parent, *redirect;
         klib::ListHead children_list;
         klib::ListHead sibling_link;
-        u32 ref_count;
         u32 name_hash;
         char name[];
 
@@ -69,6 +77,13 @@ namespace vfs {
         void lookup();
         void create(NodeType new_node_type = NodeType::NONE);
         void remove();
+
+        template<klib::Putchar Put>
+        void print_path(Put put) {
+            if (parent && parent->parent)
+                parent->print_path(put);
+            klib::printf_template(put, "/%s", name);
+        }
     };
 
     struct Filesystem {
@@ -78,7 +93,7 @@ namespace vfs {
         virtual ~Filesystem() {}
 
         virtual void lookup(Entry *entry) = 0;
-        virtual void create(Entry *entry, NodeType new_node_type = NodeType::NONE) = 0;
+        virtual void create(Entry *entry, NodeType new_node_type) = 0;
         virtual void remove(Entry *entry) = 0;
         virtual void stat(VNode *vnode, struct stat *statbuf) = 0;
         virtual isize readdir(Entry *entry, void *buf, usize max_size, usize *cursor) = 0;
@@ -107,12 +122,28 @@ namespace vfs {
         void  *priv;
         usize cursor;
         usize flags;
-        usize ref_count;
 
-        FileDescription(Entry *entry, usize flags) : vnode(entry->vnode), entry(entry), cursor(0), flags(flags), ref_count(1) {}
-        FileDescription(VNode *vnode, usize flags) : vnode(vnode), cursor(0), flags(flags), ref_count(1) {}
+        FileDescription(Entry *entry, usize flags) : vnode(entry->vnode), entry(entry), cursor(0), flags(flags), ref_count(1) {
+            vnode->increment_ref_count();
+        }
+
+        FileDescription(VNode *vnode, usize flags) : vnode(vnode), cursor(0), flags(flags), ref_count(1) {
+            vnode->increment_ref_count();
+        }
+
+        ~FileDescription() {
+            vnode->close(this);
+            vnode->decrement_ref_count();
+        }
+
         bool can_read() { return ((flags & O_ACCMODE) == O_RDONLY) || ((flags & O_ACCMODE) == O_RDWR); }
         bool can_write() { return ((flags & O_ACCMODE) == O_WRONLY) || ((flags & O_ACCMODE) == O_RDWR); }
+
+        void increment_ref_count() { ref_count++; }
+        void decrement_ref_count() { ref_count--; if (ref_count == 0) delete this; }
+
+    private:
+        int ref_count;
     };
 
     FileDescription* get_file_description(int fd);
@@ -128,10 +159,10 @@ namespace vfs {
         inline void reset() { data = 0; }
         inline FileDescription* get_description() { return (FileDescription*)(data & ~flags_mask); }
         inline usize get_flags() { return data & flags_mask; }
-        inline void set_flags(usize flags) { data |= flags & flags_mask; }
+        inline void set_flags(usize flags) { data = (usize)get_description() | (flags & flags_mask); }
 
         void close(sched::Process *process, int fdnum);
-        FileDescriptor duplicate();
+        FileDescriptor duplicate(bool keep_flags = false);
     };
 
     struct Dirent {
@@ -160,9 +191,12 @@ namespace vfs {
     isize syscall_pread(int fd, void *buf, usize count, usize offset);
     isize syscall_write(int fd, const void *buf, usize count);
     isize syscall_pwrite(int fd, const void *buf, usize count, usize offset);
+    isize syscall_readv(int fd, const iovec *iovs, int iovc);
+    isize syscall_writev(int fd, const iovec *iovs, int iovc);
     isize syscall_seek(int fd, isize offset, int whence);
     isize syscall_getcwd(char *buf, usize size);
     isize syscall_chdir(const char *path);
+    isize syscall_fchdir(int fd);
     isize syscall_readdir(int fd, void *buf, usize max_size);
     isize syscall_unlink(int dirfd, const char *path, int flags);
     isize syscall_fcntl(int fd, int cmd, usize arg);

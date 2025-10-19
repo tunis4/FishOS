@@ -38,7 +38,7 @@ namespace cpu {
         asm volatile("fxrstor (%0)" : : "r" (storage) : "memory");
     }
 
-    void smp_init(limine_smp_response *smp_res) {
+    void smp_init(limine_mp_response *smp_res) {
         klib::printf("CPU: SMP | x2APIC: %s\n", (smp_res->flags & 1) ? "yes" : "no");
         for (u32 i = 0; i < smp_res->cpu_count; i++) {
             auto cpu_info = smp_res->cpus[i];
@@ -73,11 +73,11 @@ namespace cpu {
         write_gs_base((uptr)(new (&bsp_cpu) CPU()));
     }
 
-    void init(limine_smp_info *info) {
+    void init(limine_mp_info *info) {
         reload_gdt();
         interrupts::load_idt();
 
-        vmm::kernel_pagemap.activate();
+        mem::vmm->kernel_pagemap.activate();
 
         auto cpu = (CPU*)info->extra_argument;
         cpu->lapic_id = info->lapic_id;
@@ -85,10 +85,10 @@ namespace cpu {
         load_tss(&cpu->tss);
 
         uptr int_stack_phy = pmm::alloc_pages(stack_size / 0x1000);
-        cpu->tss.rsp0 = int_stack_phy + stack_size + vmm::hhdm;
+        cpu->tss.rsp0 = int_stack_phy + stack_size + mem::hhdm;
 
         uptr sched_stack_phy = pmm::alloc_pages(stack_size / 0x1000);
-        cpu->tss.ist1 = sched_stack_phy + stack_size + vmm::hhdm;
+        cpu->tss.ist1 = sched_stack_phy + stack_size + mem::hhdm;
 
         // hardcode PAT
         // 0: WB  1: WT  2: UC-  3: UC  4: WB  5: WT  6: WC  7: WP

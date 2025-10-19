@@ -1,27 +1,35 @@
+#! /bin/sh
+
 name=limine
-version=8.0.9
+version=10.1.0
 revision=1
-tarball_url="https://github.com/limine-bootloader/limine/releases/download/v${version}/limine-${version}.tar.gz"
-tarball_blake2b="8529d58b83fb2121412aaac3399b96166d1c93b8549514e8ac0c75429b63987b410c2aaf91388ebd2c9eb8c9a5533b9f99e273f0fcddc5f1186c2def53d510fd"
-source_hostdeps="autoconf automake libtool pkg-config"
+tarball_url="https://codeberg.org/Limine/Limine/releases/download/v${version}/limine-${version}.tar.gz"
+tarball_blake2b="d8efab8a8fb84fa47378becf90e1b3bac9f7870b83195e612b7dec95b94b894daa0164ea5ef5313ab96cc1bd22ed19f71d4c15ad3062472ab09a51dd0bf2f4f8"
 imagedeps="mtools nasm"
-hostdeps="gcc autoconf automake libtool pkg-config"
+hostdeps="gcc pkg-config"
 deps="core-libs"
 
-regenerate() {
+prepare() {
     autotools_recursive_regen
 }
 
-build() {
-    autotools_configure \
-        --enable-uefi-ia32 \
-        --enable-uefi-x86-64 \
-        --enable-uefi-cd \
-        --enable-bios \
-        --enable-bios-cd \
-        --enable-bios-pxe \
-        TOOLCHAIN_FOR_TARGET=${OS_TRIPLET}
+configure() {
+    if [ "${JINX_ARCH}" = "x86_64" ]; then
+        X86_FLAGS="--enable-bios \
+                   --enable-bios-cd \
+                   --enable-bios-pxe \
+                   --enable-uefi-ia32 \
+        "
+    fi
 
+    autotools_configure \
+        $X86_FLAGS \
+        --enable-uefi-${JINX_ARCH} \
+        --enable-uefi-cd \
+        TOOLCHAIN_FOR_TARGET=${OS_TRIPLET}-
+}
+
+build() {
     make -j${parallelism}
 }
 

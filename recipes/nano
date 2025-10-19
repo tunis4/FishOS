@@ -1,19 +1,23 @@
-name=nano
-version=7.2
-revision=1
-tarball_url="https://ftp.gnu.org/gnu/nano/nano-${version}.tar.xz"
-tarball_blake2b="c7e3b18383e9f2f9db1f6059c875ddd164d730ea0e5b363e66fb8e5f30e8598ba49a5afd8eea3a55e295f1e43fb136019f60cc9154ae276c5d589002c0e5298a"
-source_hostdeps="automake autoconf libtool pkg-config"
-hostdeps="gcc automake autoconf libtool pkg-config"
-deps="core-libs ncurses"
+#! /bin/sh
 
-regenerate() {
+name=nano
+version=8.6
+revision=1
+tarball_url="https://ftpmirror.gnu.org/gnu/nano/nano-${version}.tar.xz"
+tarball_blake2b="f7e17085d237ec3512b21bb732c2ebcf71a96991344acd0efc3592a650be856aed3ad958df59e27f332f750ac5e46ba7ed06b23093c8b68c4bf0a94aeecd2af0"
+hostdeps="gcc pkg-config"
+deps="core-libs ncurses file"
+
+prepare() {
     autotools_recursive_regen
 }
 
-build() {
+configure() {
+        gl_cv_func_strcasecmp_works=yes \
     autotools_configure
+}
 
+build() {
     make -j${parallelism}
 }
 

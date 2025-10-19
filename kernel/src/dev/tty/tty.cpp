@@ -56,16 +56,24 @@ namespace dev::tty {
             memcpy(&termios, arg, sizeof(termios));
         } return 0;
         case TIOCGPGRP: {
-            *(int*)arg = foreground_process_group->pid;
+            if (fd->vnode != cpu::get_current_thread()->process->group->session->controlling_terminal)
+                return -ENOTTY;
+            if (!foreground_process_group)
+                return -ENOTTY;
+            *(int*)arg = foreground_process_group->leader_process->pid;
         } return 0;
         case TIOCSPGRP: {
             auto *thread = sched::Thread::get_from_tid(*(int*)arg);
             if (!thread)
                 return -ESRCH;
-            foreground_process_group = thread->process;
+            if (thread->process->group->session != cpu::get_current_thread()->process->group->session)
+                return -EPERM;
+            foreground_process_group = thread->process->group;
         } return 0;
         case TIOCGSID: {
-            *(int*)arg = session->pid;
+            if (!session)
+                return -ENOTTY;
+            *(int*)arg = session->leader_group->leader_process->pid;
         } return 0;
         case TIOCSCTTY: {
             set_controlling_terminal(cpu::get_current_thread()->process, fd->vnode);
@@ -76,15 +84,15 @@ namespace dev::tty {
     }
 
     void Terminal::set_controlling_terminal(sched::Process *process, vfs::VNode *vnode) {
-        if (process != process->session_leader)
+        if (process != process->session_leader())
             return;
-        process->controlling_terminal = vnode;
-        session = process;
-        foreground_process_group = process;
+        process->group->session->controlling_terminal = vnode;
+        session = process->group->session;
+        foreground_process_group = process->group;
     }
 
     isize TTYDevNode::open(vfs::FileDescription *fd) {
-        auto *controlling_terminal = cpu::get_current_thread()->process->session_leader->controlling_terminal;
+        auto *controlling_terminal = cpu::get_current_thread()->process->group->session->controlling_terminal;
         if (!controlling_terminal)
             return -ENXIO;
         fd->vnode = controlling_terminal;

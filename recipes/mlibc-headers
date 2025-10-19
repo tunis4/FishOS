@@ -1,27 +1,20 @@
+#! /bin/sh
+
 name=mlibc-headers
-revision=1
+skip_pkg_check=yes
+revision=18
 from_source=mlibc
-imagedeps="meson ninja base-devel rsync"
 hostdeps="pkg-config"
-builddeps="linux-headers"
+
+configure() {
+    meson_configure \
+        -Dheaders_only=true
+}
 
 build() {
-    meson_configure \
-        -Dheaders_only=true \
-        -Ddisable_crypt_option=true \
-        -Ddisable_iconv_option=true \
-        -Ddisable_intl_option=true
-
-    ninja -j${parallelism}
-
-	mkdir linux
-	cp -rp ${base_dir}/sources/linux/* linux
+    meson compile -j${parallelism}
 }
 
 package() {
-	pushd linux
-	make headers_install ARCH=x86_64 INSTALL_HDR_PATH=${dest_dir}/${prefix}/
-	popd
-
-    DESTDIR="${dest_dir}" ninja install
+    DESTDIR="${dest_dir}" meson install --no-rebuild
 }

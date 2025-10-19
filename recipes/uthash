@@ -1,0 +1,17 @@
+#! /bin/sh
+
+name=uthash
+version=2.3.0
+revision=1
+tarball_url="https://github.com/troydhanson/uthash/archive/refs/tags/v${version}.tar.gz"
+tarball_blake2b="473e263df9f3555c9ef41c2b39cf2ed33a4624ce7325bbe52db805ac741b8383e64f84a9e249f96faf40e0b94fa4a7fc6c0e83bebe8b3677a90cdca82a4e3f51"
+
+package() {
+    cp -r "${source_dir}"/. ./
+
+    install -dm755 "${dest_dir}"/usr/include/
+
+    for h in src/*.h ; do
+        install -m 644 ${h} "${dest_dir}"/usr/include/
+    done
+}

@@ -5,30 +5,22 @@
 
 namespace userland {
     isize syscall_gettid() {
-#if SYSCALL_TRACE
-        klib::printf("gettid()\n");
-#endif
+        log_syscall("gettid()\n");
         return cpu::get_current_thread()->tid;
     }
 
     isize syscall_getpid() {
-#if SYSCALL_TRACE
-        klib::printf("getpid()\n");
-#endif
+        log_syscall("getpid()\n");
         return cpu::get_current_thread()->process->pid;
     }
 
     isize syscall_getppid() {
-#if SYSCALL_TRACE
-        klib::printf("getppid()\n");
-#endif
+        log_syscall("getppid()\n");
         return cpu::get_current_thread()->process->parent->pid;
     }
 
     isize syscall_getpgid(int pid) {
-#if SYSCALL_TRACE
-        klib::printf("getpgid(%d)\n", pid);
-#endif
+        log_syscall("getpgid(%d)\n", pid);
         sched::Process *process;
         if (pid) {
             auto *thread = sched::Thread::get_from_tid(pid);
@@ -38,63 +30,66 @@ namespace userland {
         } else {
             process = cpu::get_current_thread()->process;
         }
-        return process->process_group_leader->pid;
+        return process->group->leader_process->pid;
     }
 
     isize syscall_setpgid(int pid, int pgid) {
-#if SYSCALL_TRACE
-        klib::printf("setpgid(%d, %d)\n", pid, pgid);
-#endif
-        sched::Process *process;
+        log_syscall("setpgid(%d, %d)\n", pid, pgid);
+        sched::Process *current_process = cpu::get_current_thread()->process;
+        sched::Process *target_process = current_process;
         if (pid) {
             auto *thread = sched::Thread::get_from_tid(pid);
-            if (!thread)
-                return -ESRCH;
-            process = thread->process;
-        } else {
-            process = cpu::get_current_thread()->process;
+            if (!thread) return -ESRCH;
+            target_process = thread->process;
+            if (target_process != current_process && target_process->parent != current_process) return -ESRCH;
+            if (target_process->parent == current_process && target_process->has_performed_execve) return -EACCES;
         }
-        sched::Process *process_group;
-        if (pgid) {
+        if (target_process->session_leader() == target_process)
+            return -EPERM;
+
+        sched::ProcessGroup *group;
+        if (pgid && pgid != target_process->pid) {
+            if (pgid < 0) return -EINVAL;
+
             auto *thread = sched::Thread::get_from_tid(pgid);
-            if (!thread)
-                return -EPERM;
-            process_group = thread->process;
+            if (!thread) return -EPERM;
+
+            group = thread->process->group;
+            if (group->session != target_process->group->session) return -EPERM;
         } else {
-            process_group = process;
+            if (target_process->group->leader_process == target_process) return 0;
+            group = new sched::ProcessGroup(target_process->group->session, target_process);
         }
-        process->process_group_leader = process_group;
-        if (!process->process_group_list.is_empty())
-            process->process_group_list.remove();
-        if (process_group->process_group_list.is_invalid())
-            process_group->process_group_list.init();
-        if (process != process_group)
-            process_group->process_group_list.add_before(&process->process_group_list);
+
+        klib::InterruptLock interrupt_guard;
+        group->add_process(target_process);
         return 0;
     }
 
     isize syscall_getsid(int pid) {
-#if SYSCALL_TRACE
-        klib::printf("getsid(%d)\n", pid);
-#endif
+        log_syscall("getsid(%d)\n", pid);
         sched::Process *process;
         if (pid) {
             auto *thread = sched::Thread::get_from_tid(pid);
-            if (!thread)
-                return -ESRCH;
+            if (!thread) return -ESRCH;
             process = thread->process;
         } else {
             process = cpu::get_current_thread()->process;
         }
-        return process->session_leader->pid;
+        return process->session_leader()->pid;
     }
 
     isize syscall_setsid() {
-#if SYSCALL_TRACE
-        klib::printf("setsid()\n");
-#endif
+        log_syscall("setsid()\n");
         auto *process = cpu::get_current_thread()->process;
-        process->session_leader = process;
-        return 0;
+        if (process->group->leader_process == process)
+            return -EPERM;
+
+        klib::InterruptLock interrupt_guard;
+        auto *session = new sched::Session();
+        auto *group = new sched::ProcessGroup(session, process);
+        group->add_process(process);
+        session->leader_group = process->group;
+        return process->pid;
     }
 }

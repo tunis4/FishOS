@@ -1,51 +1,125 @@
-diff --git mlibc-clean/abis/fishos/auxv.h mlibc-workdir/abis/fishos/auxv.h
-new file mode 100644
-index 00000000..da7a438c
---- /dev/null
-+++ mlibc-workdir/abis/fishos/auxv.h
-@@ -0,0 +1,9 @@
-+#ifndef _ABIBITS_AUXV_H
-+#define _ABIBITS_AUXV_H
+diff --git mlibc-clean/.gitignore mlibc-workdir/.gitignore
+index bdef4a5c..9fb1e118 100644
+--- mlibc-clean/.gitignore
++++ mlibc-workdir/.gitignore
+@@ -6,3 +6,6 @@
+ .vscode
+ compile_commands.json
+ /linux-headers
 +
-+#define AT_EXECPATH 15
-+#define AT_SECURE 23
-+#define AT_RANDOM 25
-+#define AT_EXECFN 31
-+
-+#endif
++.cache/
++.gitignore
 diff --git mlibc-clean/meson.build mlibc-workdir/meson.build
-index f119bf8c..2a469c6e 100644
+index 5541fe60..68247d2e 100644
 --- mlibc-clean/meson.build
 +++ mlibc-workdir/meson.build
-@@ -264,6 +264,10 @@ elif host_machine.system() == 'dripos'
- 	rtld_include_dirs += include_directories('sysdeps/dripos/include')
- 	libc_include_dirs += include_directories('sysdeps/dripos/include')
- 	subdir('sysdeps/dripos')
+@@ -274,6 +274,13 @@ elif host_machine.system() == 'nyaux'
+ 	rtld_include_dirs += include_directories('sysdeps/nyaux/include')
+ 	libc_include_dirs += include_directories('sysdeps/nyaux/include')
+ 	subdir('sysdeps/nyaux')
 +elif host_machine.system() == 'fishos'
 +	rtld_include_dirs += include_directories('sysdeps/fishos/include')
 +	libc_include_dirs += include_directories('sysdeps/fishos/include')
++	internal_conf.set10('MLIBC_MAP_DSO_SEGMENTS', true)
++	internal_conf.set10('MLIBC_MMAP_ALLOCATE_DSO', true)
++	internal_conf.set10('MLIBC_MAP_FILE_WINDOWS', true)
 +	subdir('sysdeps/fishos')
  else
  	error('No sysdeps defined for OS: ' + host_machine.system())
  endif
-diff --git mlibc-clean/options/glibc/generic/execinfo.cpp mlibc-workdir/options/glibc/generic/execinfo.cpp
-index 3474615e..7e2d8c01 100644
---- mlibc-clean/options/glibc/generic/execinfo.cpp
-+++ mlibc-workdir/options/glibc/generic/execinfo.cpp
-@@ -2,8 +2,9 @@
- #include <bits/ensure.h>
+@@ -311,27 +318,27 @@ if linux_option
+ 			error('linux_kernel_headers is not set to a valid path')
+ 		endif
  
- int backtrace(void **, int) {
--	__ensure(!"Not implemented");
--	__builtin_unreachable();
-+	// __ensure(!"Not implemented");
-+	// __builtin_unreachable();
-+	return 0;
- }
+-		cc_search_path = run_command(meson.get_compiler('cpp', native: true), '-E', '-Wp,-v', '-xc', '/dev/null', check: true).stderr()
+-		search_paths = []
+-
+-		search_started = false
+-		foreach line : cc_search_path.strip().splitlines()
+-			if not search_started and line == '#include <...> search starts here:'
+-				search_started = true
+-				continue
+-			elif search_started and line == 'End of search list.'
+-				search_started = false
+-			elif search_started
+-				search_paths += line.strip()
+-			endif
+-		endforeach
+-
+-		foreach path : search_paths
+-			if fs.is_samepath(get_option('linux_kernel_headers'), path)
+-				warning('Please install Linux kernel headers to a directory using \'make headers_install\'.')
+-				error('Using system include paths for \'linux_kernel_headers\' is unsupported!')
+-			endif
+-		endforeach
++		# cc_search_path = run_command(meson.get_compiler('cpp', native: true), '-E', '-Wp,-v', '-xc', '/dev/null', check: true).stderr()
++		# search_paths = []
++
++		# search_started = false
++		# foreach line : cc_search_path.strip().splitlines()
++		# 	if not search_started and line == '#include <...> search starts here:'
++		# 		search_started = true
++		# 		continue
++		# 	elif search_started and line == 'End of search list.'
++		# 		search_started = false
++		# 	elif search_started
++		# 		search_paths += line.strip()
++		# 	endif
++		# endforeach
++
++		# foreach path : search_paths
++		# 	if fs.is_samepath(get_option('linux_kernel_headers'), path)
++		# 		warning('Please install Linux kernel headers to a directory using \'make headers_install\'.')
++		# 		error('Using system include paths for \'linux_kernel_headers\' is unsupported!')
++		# 	endif
++		# endforeach
+ 	endif
  
- char **backtrace_symbols(void *const *, int) {
+ 	rtld_include_dirs += include_directories('options/linux/include')
+diff --git mlibc-clean/options/ansi/include/math.h mlibc-workdir/options/ansi/include/math.h
+index a4ffd323..240b6281 100644
+--- mlibc-clean/options/ansi/include/math.h
++++ mlibc-workdir/options/ansi/include/math.h
+@@ -373,6 +373,16 @@ extern int signgam;
+ int finite(double __x);
+ int finitef(float __x);
+ 
++
++
++double j0(double);
++double j1(double);
++double jn(int, double);
++
++double y0(double);
++double y1(double);
++double yn(int, double);
++
+ #endif /* !__MLIBC_ABI_ONLY */
+ 
+ #ifdef __cplusplus
+diff --git mlibc-clean/options/posix/generic/netdb.cpp mlibc-workdir/options/posix/generic/netdb.cpp
+index 80d0836a..f78da65a 100644
+--- mlibc-clean/options/posix/generic/netdb.cpp
++++ mlibc-workdir/options/posix/generic/netdb.cpp
+@@ -241,8 +241,14 @@ int getnameinfo(const struct sockaddr *__restrict addr, socklen_t addr_len,
+ 	}
+ 
+ 	if (serv && serv_len) {
+-		__ensure("getnameinfo(): not implemented service resolution yet!");
+-		__builtin_unreachable();
++		if (!(flags & NI_NUMERICSERV)) {
++			__ensure("getnameinfo(): not implemented service resolution yet!");
++			__builtin_unreachable();
++		}
++
++		uint16_t port = ntohs(reinterpret_cast<const struct sockaddr_in*>(addr)->sin_port);
++		if (snprintf(serv, serv_len, "%u", port) >= (int)serv_len)
++			return EAI_OVERFLOW;
+ 	}
+ 
+ 	return 0;
 diff --git mlibc-clean/options/posix/generic/posix_locale.cpp mlibc-workdir/options/posix/generic/posix_locale.cpp
-index bd8710a8..991082d4 100644
+index f19e623e..5ca0c550 100644
 --- mlibc-clean/options/posix/generic/posix_locale.cpp
 +++ mlibc-workdir/options/posix/generic/posix_locale.cpp
 @@ -4,8 +4,8 @@
@@ -57,14 +131,108 @@ index bd8710a8..991082d4 100644
 +bool newlocale_seen = true;
 +bool uselocale_seen = true;
  
+ } // namespace
+ 
+diff --git mlibc-clean/options/posix/generic/posix_stdlib.cpp mlibc-workdir/options/posix/generic/posix_stdlib.cpp
+index 54c96d85..12ab74e8 100644
+--- mlibc-clean/options/posix/generic/posix_stdlib.cpp
++++ mlibc-workdir/options/posix/generic/posix_stdlib.cpp
+@@ -524,7 +524,7 @@ int grantpt(int) {
  }
  
+ double strtod_l(const char *__restrict__ nptr, char ** __restrict__ endptr, locale_t) {
+-	mlibc::infoLogger() << "mlibc: strtod_l ignores locale!" << frg::endlog;
++	// mlibc::infoLogger() << "mlibc: strtod_l ignores locale!" << frg::endlog;
+ 	return strtod(nptr, endptr);
+ }
+ 
+diff --git mlibc-clean/options/posix/include/netinet/ip_icmp.h mlibc-workdir/options/posix/include/netinet/ip_icmp.h
+index c5fecd1b..5edb4ed0 100644
+--- mlibc-clean/options/posix/include/netinet/ip_icmp.h
++++ mlibc-workdir/options/posix/include/netinet/ip_icmp.h
+@@ -70,6 +70,8 @@ struct icmphdr {
+ 
+ #define ICMP_ADVLENMIN (8 + sizeof(struct ip) + 8)
+ 
++#define ICMP_MINLEN 8
++
+ struct icmp_ra_addr {
+ 	uint32_t ira_addr;
+ 	uint32_t ira_preference;
+diff --git mlibc-clean/sysdeps/fishos/crt-x86_64/Scrt1.S mlibc-workdir/sysdeps/fishos/crt-x86_64/Scrt1.S
+new file mode 100644
+index 00000000..d0e82138
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/crt-x86_64/Scrt1.S
+@@ -0,0 +1,8 @@
++.section .text
++.global _start
++_start:
++	mov %rsp, %rdi
++	lea main(%rip), %rsi
++	call __mlibc_entry
++.section .note.GNU-stack,"",%progbits
++
+diff --git mlibc-clean/sysdeps/fishos/crt-x86_64/crt1.S mlibc-workdir/sysdeps/fishos/crt-x86_64/crt1.S
+new file mode 100644
+index 00000000..6afb421d
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/crt-x86_64/crt1.S
+@@ -0,0 +1,10 @@
++
++.section .text
++.global _start
++_start:
++	mov %rsp, %rdi
++	mov $main, %rsi
++	call __mlibc_entry
++
++.section .note.GNU-stack,"",%progbits
++
+diff --git mlibc-clean/sysdeps/fishos/crt-x86_64/crti.S mlibc-workdir/sysdeps/fishos/crt-x86_64/crti.S
+new file mode 100644
+index 00000000..956c6274
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/crt-x86_64/crti.S
+@@ -0,0 +1,15 @@
++	.ident "x86_64-ironclad-mlibc crti"
++
++	.section .init
++	.globl	_init
++	.type	_init,@function
++_init:
++	push %rax
++
++	.section .fini
++	.globl	_fini
++	.type	_fini,@function
++_fini:
++	push %rax
++
++.section .note.GNU-stack,"",%progbits
+diff --git mlibc-clean/sysdeps/fishos/crt-x86_64/crtn.S mlibc-workdir/sysdeps/fishos/crt-x86_64/crtn.S
+new file mode 100644
+index 00000000..d3903d1c
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/crt-x86_64/crtn.S
+@@ -0,0 +1,11 @@
++.ident "x86_64-ironclad-mlibc crtn"
++
++.section .init
++	pop %rax
++	ret
++
++.section .fini
++	pop %rax
++	ret
++
++.section .note.GNU-stack,"",%progbits
 diff --git mlibc-clean/sysdeps/fishos/generic/entry.cpp mlibc-workdir/sysdeps/fishos/generic/entry.cpp
 new file mode 100644
-index 00000000..0888776d
+index 00000000..988cb4c4
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/generic/entry.cpp
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,61 @@
 +#include <bits/ensure.h>
 +#include <bits/posix/posix_signal.h>
 +#include <fishos/syscall.h>
@@ -73,9 +241,6 @@ index 00000000..0888776d
 +#include <mlibc/elf/startup.h>
 +#include <stdint.h>
 +#include <stdlib.h>
-+
-+// defined by the POSIX library
-+void __mlibc_initLocale();
 +
 +extern "C" uintptr_t *__dlapi_entrystack();
 +extern "C" void __dlapi_enter(uintptr_t *entry_stack);
@@ -90,8 +255,6 @@ index 00000000..0888776d
 +static LibraryGuard guard;
 +
 +LibraryGuard::LibraryGuard() {
-+	__mlibc_initLocale();
-+
 +	// Parse the exec() stack.
 +	mlibc::parse_exec_stack(__dlapi_entrystack(), &__mlibc_stack_data);
 +	mlibc::set_startup_data(__mlibc_stack_data.argc, __mlibc_stack_data.argv,
@@ -133,18 +296,18 @@ index 00000000..0888776d
 +}
 diff --git mlibc-clean/sysdeps/fishos/generic/filesystem.cpp mlibc-workdir/sysdeps/fishos/generic/filesystem.cpp
 new file mode 100755
-index 00000000..f5508a1e
+index 00000000..71778477
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/generic/filesystem.cpp
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,347 @@
 +#include <fishos/syscall.h>
 +
 +#include <sys/ioctl.h>
 +#include <sys/types.h>
 +#include <sys/stat.h>
++#include <sys/file.h>
 +#include <errno.h>
 +#include <dirent.h>
-+#include <limits.h>
 +#include <fcntl.h>
 +#include <string.h>
 +
@@ -154,11 +317,11 @@ index 00000000..f5508a1e
 +
 +namespace mlibc {
 +
-+int sys_write(int fd, const void *buffer, size_t count, ssize_t *written) {
++int sys_write(int fd, const void *buffer, size_t count, ssize_t *bytes_written) {
 +	int64_t ret = syscall(SYS_write, fd, (uintptr_t)buffer, count);
 +	if (ret < 0)
 +		return -ret;
-+	*written = ret;
++	*bytes_written = ret;
 +	return 0;
 +}
 +
@@ -170,11 +333,11 @@ index 00000000..f5508a1e
 +	return 0;
 +}
 +
-+int sys_pwrite(int fd, const void *buffer, size_t count, off_t off, ssize_t *written) {
++int sys_pwrite(int fd, const void *buffer, size_t count, off_t off, ssize_t *bytes_written) {
 +	int64_t ret = syscall(SYS_pwrite, fd, (uintptr_t)buffer, count, off);
 +	if (ret < 0)
 +		return -ret;
-+	*written = ret;
++	*bytes_written = ret;
 +	return 0;
 +}
 +
@@ -186,6 +349,22 @@ index 00000000..f5508a1e
 +	return 0;
 +}
 +
++int sys_readv(int fd, const struct iovec *iovs, int iovc, ssize_t *bytes_written) {
++	int64_t ret = syscall(SYS_readv, fd, (uintptr_t)iovs, iovc);
++	if (ret < 0)
++		return -ret;
++	*bytes_written = ret;
++	return 0;
++}
++
++int sys_writev(int fd, const struct iovec *iovs, int iovc, ssize_t *bytes_written) {
++	int64_t ret = syscall(SYS_writev, fd, (uintptr_t)iovs, iovc);
++	if (ret < 0)
++		return -ret;
++	*bytes_written = ret;
++	return 0;
++}
++
 +int sys_seek(int fd, off_t offset, int whence, off_t *new_offset) {
 +	int64_t ret = syscall(SYS_seek, fd, offset, whence);
 +	if (ret < 0)
@@ -194,7 +373,7 @@ index 00000000..f5508a1e
 +	return 0;
 +}
 +
-+int sys_openat(int dirfd, const char *path, int flags, mode_t mode, int *fd) {
++int sys_openat(int dirfd, const char *path, int flags, [[maybe_unused]] mode_t mode, int *fd) {
 +	int64_t ret = syscall(SYS_open, dirfd, (uintptr_t)path, flags);
 +	if (ret < 0)
 +		return -ret;
@@ -299,7 +478,7 @@ index 00000000..f5508a1e
 +	return 0;
 +}
 +
-+int sys_faccessat(int dirfd, const char *pathname, int mode, int flags) {
++int sys_faccessat(int dirfd, const char *pathname, [[maybe_unused]] int mode, int flags) {
 +	struct stat buf;
 +	return sys_stat(fsfd_target::fd_path, dirfd, pathname, flags & AT_SYMLINK_NOFOLLOW, &buf);
 +}
@@ -387,10 +566,82 @@ index 00000000..f5508a1e
 +	default: return EINVAL;
 +	}
 +
-+    if (int e = sys_ioctl(fd, req, (void*)attr, nullptr); e)
-+        return e;
++	if (int e = sys_ioctl(fd, req, (void*)attr, nullptr); e)
++		return e;
 +
-+    return 0;
++	return 0;
++}
++
++int sys_fsync(int) {
++	mlibc::infoLogger() << "mlibc: fsync is a stub" << frg::endlog;
++	return 0;
++}
++
++int sys_fdatasync(int) {
++	mlibc::infoLogger() << "mlibc: fdatasync is a stub" << frg::endlog;
++	return 0;
++}
++
++int sys_chmod(const char *pathname, mode_t mode) {
++	return sys_fchmodat(AT_FDCWD, pathname, mode, 0);
++}
++
++int sys_fchmod(int fd, mode_t mode) {
++	return sys_fchmodat(fd, "", mode, AT_EMPTY_PATH);
++}
++
++int sys_fchmodat([[maybe_unused]] int fd, [[maybe_unused]] const char *pathname, [[maybe_unused]] mode_t mode, [[maybe_unused]] int flags) {
++	mlibc::infoLogger() << "mlibc: fchmodat is a stub" << frg::endlog;
++	return 0;
++}
++
++int sys_flock(int fd, int options) {
++	struct flock lock;
++	lock.l_whence = SEEK_SET;
++	lock.l_start = 0;
++	lock.l_len = (off_t)((uint64_t)-1);
++	lock.l_pid = sys_getpid();
++
++	switch (options & ~(LOCK_NB)) {
++	case LOCK_SH: lock.l_type = F_RDLCK; break;
++	case LOCK_EX: lock.l_type = F_WRLCK; break;
++	case LOCK_UN: lock.l_type = F_UNLCK; break;
++	default: return EINVAL;
++	}
++
++	int command = (options & LOCK_NB) ? F_SETLK : F_SETLKW;
++	int64_t ret = syscall(SYS_fcntl, fd, command, (uintptr_t)&lock);
++	if (ret < 0)
++		return -ret;
++	return 0;
++}
++
++int sys_umask(mode_t mode, mode_t *old) {
++	*old = syscall(SYS_umask, mode);
++	return 0;
++}
++
++int sys_inotify_create(int flags, int *fd) {
++	int64_t ret = syscall(SYS_inotify_create, flags);
++	if (ret < 0)
++		return -ret;
++	*fd = ret;
++	return 0;
++}
++
++int sys_inotify_add_watch(int ifd, const char *path, uint32_t mask, int *wd) {
++	int64_t ret = syscall(SYS_inotify_add_watch, ifd, (uintptr_t)path, mask);
++	if (ret < 0)
++		return -ret;
++	*wd = ret;
++	return 0;
++}
++
++int sys_inotify_rm_watch(int ifd, int wd) {
++	int64_t ret = syscall(SYS_inotify_rm_watch, ifd, wd);
++	if (ret < 0)
++		return -ret;
++	return 0;
 +}
 +
 +#endif
@@ -398,14 +649,15 @@ index 00000000..f5508a1e
 +}
 diff --git mlibc-clean/sysdeps/fishos/generic/generic.cpp mlibc-workdir/sysdeps/fishos/generic/generic.cpp
 new file mode 100644
-index 00000000..307376e6
+index 00000000..61c29aaa
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/generic/generic.cpp
-@@ -0,0 +1,388 @@
+@@ -0,0 +1,548 @@
 +#include <fishos/syscall.h>
 +#include <stddef.h>
 +#include <bits/ensure.h>
 +#include <abi-bits/pid_t.h>
++#include <abi-bits/random.h>
 +#include <mlibc/debug.hpp>
 +#include <mlibc/all-sysdeps.hpp>
 +#include <mlibc/thread-entry.hpp>
@@ -413,6 +665,7 @@ index 00000000..307376e6
 +#include <errno.h>
 +#include <sys/resource.h>
 +#include <sys/ioctl.h>
++#include <linux/futex.h>
 +
 +namespace mlibc {
 +
@@ -436,6 +689,13 @@ index 00000000..307376e6
 +	return 0;
 +}
 +
++int sys_vm_protect(void *pointer, size_t size, int prot) {
++	int64_t ret = syscall(SYS_mprotect, (uintptr_t)pointer, size, prot);
++	if (ret < 0)
++		return -ret;
++	return 0;
++}
++
 +int sys_anon_allocate(size_t size, void **pointer) {
 +	return sys_vm_map(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0, pointer);
 +}
@@ -453,19 +713,19 @@ index 00000000..307376e6
 +void sys_libc_log(const char *msg) {
 +	int len = strlen(msg);
 +	ssize_t written;
-+	sys_write(1, msg, len, &written);
-+	sys_write(1, "\n", 1, &written);
++	sys_write(2, msg, len, &written);
++	sys_write(2, "\n", 1, &written);
 +}
 +
 +int sys_futex_wait(int *pointer, int expected, const struct timespec *timeout) {
-+	int64_t ret = syscall(SYS_futex_wait, (uintptr_t)pointer, expected, (uintptr_t)timeout);
++	int64_t ret = syscall(SYS_futex, (uintptr_t)pointer, FUTEX_WAIT, expected, (uintptr_t)timeout);
 +	if (ret < 0)
 +		return -ret;
 +	return 0;
 +}
 +
 +int sys_futex_wake(int *pointer) {
-+	int64_t ret = syscall(SYS_futex_wake, (uintptr_t)pointer);
++	int64_t ret = syscall(SYS_futex, (uintptr_t)pointer, FUTEX_WAKE, INT_MAX);
 +	if (ret < 0)
 +		return -ret;
 +	return 0;
@@ -488,7 +748,23 @@ index 00000000..307376e6
 +	return 0;
 +}
 +
-+int sys_ppoll(struct pollfd *fds, int nfds, const struct timespec *timeout, const sigset_t *sigmask, int *num_events) {
++int sys_thread_getname(void *tcb, char *name, size_t size) {
++	auto t = reinterpret_cast<Tcb*>(tcb);
++	int64_t ret = syscall(SYS_thread_getname, t->tid, (uintptr_t)name, size);
++	if (ret < 0)
++		return -ret;
++	return 0;
++}
++
++int sys_thread_setname(void *tcb, const char *name) {
++	auto t = reinterpret_cast<Tcb*>(tcb);
++	int64_t ret = syscall(SYS_thread_setname, t->tid, (uintptr_t)name);
++	if (ret < 0)
++		return -ret;
++	return 0;
++}
++
++int sys_ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout, const sigset_t *sigmask, int *num_events) {
 +	int64_t ret = syscall(SYS_poll, (uintptr_t)fds, nfds, (uintptr_t)timeout, (uintptr_t)sigmask);
 +	if (ret < 0)
 +		return -ret;
@@ -630,6 +906,26 @@ index 00000000..307376e6
 +	return 0;
 +}
 +
++int sys_getresuid(uid_t *ruid, uid_t *euid, uid_t *suid) {
++	if (ruid)
++		*ruid = sys_getuid();
++	if (euid)
++		*euid = sys_geteuid();
++	if (suid)
++		*suid = sys_getuid();
++	return 0;
++}
++
++int sys_getresgid(uid_t *rgid, uid_t *egid, uid_t *sgid) {
++	if (rgid)
++		*rgid = sys_getgid();
++	if (egid)
++		*egid = sys_getegid();
++	if (sgid)
++		*sgid = sys_getgid();
++	return 0;
++}
++
 +void sys_exit(int status) {
 +	syscall(SYS_exit, status);
 +	__builtin_unreachable();
@@ -647,6 +943,17 @@ index 00000000..307376e6
 +	if (ret < 0)
 +		return -ret;
 +	return 0;
++}
++
++int sys_fchdir(int fd) {
++	int64_t ret = syscall(SYS_fchdir, fd);
++	if (ret < 0)
++		return -ret;
++	return 0;
++}
++
++void sys_yield() {
++	syscall(SYS_sched_yield);
 +}
 +
 +int sys_sleep(time_t *secs, long *nanos) {
@@ -724,6 +1031,13 @@ index 00000000..307376e6
 +	return 0;
 +}
 +
++int sys_sigaltstack(const stack_t *signal_stack, stack_t *old_signal_stack) {
++	int64_t ret = syscall(SYS_sigaltstack, (uintptr_t)signal_stack, (uintptr_t)old_signal_stack);
++	if (ret < 0)
++		return -ret;
++	return 0;
++}
++
 +int sys_kill(pid_t pid, int signal) {
 +	int64_t ret = syscall(SYS_kill, pid, signal);
 +	if (ret < 0)
@@ -733,6 +1047,24 @@ index 00000000..307376e6
 +
 +int sys_tgkill(int, int tid, int number) {
 +	return sys_kill(tid, number);
++}
++
++int sys_getcpu(int *cpu) {
++	*cpu = 0;
++	return 0;
++}
++
++int sys_getaffinity([[maybe_unused]] pid_t pid, size_t cpusetsize, cpu_set_t *mask) {
++	memset(mask, 0, cpusetsize);
++	mask->__bits[0] = 1;
++	return 0;
++}
++
++int sys_sysinfo(struct sysinfo *info) {
++	int64_t ret = syscall(SYS_sysinfo, (uintptr_t)info);
++	if (ret < 0)
++		return -ret;
++	return 0;
 +}
 +
 +int sys_gethostname(char *buffer, size_t bufsize) {
@@ -779,11 +1111,90 @@ index 00000000..307376e6
 +	return 0;
 +}
 +
-+int sys_setitimer(int which, const struct itimerval *new_value, struct itimerval *old_value) {
++int sys_setitimer([[maybe_unused]] int which, [[maybe_unused]] const struct itimerval *new_value, [[maybe_unused]] struct itimerval *old_value) {
 +	return 0;
 +}
 +
-+int sys_getitimer(int which, struct itimerval *curr_value) {
++int sys_getitimer([[maybe_unused]] int which, [[maybe_unused]] struct itimerval *curr_value) {
++	return 0;
++}
++
++int sys_getrandom(void *buffer, size_t length, int flags, ssize_t *bytes_written) {
++	const char *open_pathname = (flags & GRND_RANDOM) ? "/dev/random" : "/dev/urandom";
++	int open_flags = O_RDONLY;
++	if (flags & GRND_NONBLOCK)
++		open_flags |= O_NONBLOCK;
++
++	int fd;
++	int error = sys_open(open_pathname, open_flags, 0, &fd);
++	if (error)
++		return error;
++
++	error = sys_read(fd, buffer, length, bytes_written);
++	sys_close(fd);
++	return error;
++}
++
++int sys_getentropy(void *buffer, size_t length) {
++	ssize_t written;
++	return sys_getrandom(buffer, length, 0, &written);
++}
++
++int sys_getrlimit(int resource, struct rlimit *limit) {
++	switch (resource) {
++	case RLIMIT_NOFILE:
++		limit->rlim_cur = 1024;
++		limit->rlim_max = 1024;
++		return 0;
++	case RLIMIT_NPROC:
++		limit->rlim_cur = 126935;
++		limit->rlim_max = 126935;
++		return 0;
++	default:
++		mlibc::infoLogger() << "mlibc: getrlimit is incomplete" << frg::endlog;
++		return EINVAL;
++	}
++}
++
++int sys_sysconf(int num, long *ret) {
++	switch(num) {
++	case _SC_OPEN_MAX: {
++		struct rlimit ru;
++		if (int e = sys_getrlimit(RLIMIT_NOFILE, &ru); e)
++			return e;
++		*ret = (ru.rlim_cur == RLIM_INFINITY) ? -1 : ru.rlim_cur;
++	} break;
++	case _SC_NPROCESSORS_CONF:
++	case _SC_NPROCESSORS_ONLN: {
++		cpu_set_t set;
++		CPU_ZERO(&set);
++		if (int e = sys_getaffinity(0, sizeof(set), &set); e)
++			return e;
++		*ret = CPU_COUNT(&set);
++	} break;
++	case _SC_CHILD_MAX: {
++		struct rlimit ru;
++		if (int e = sys_getrlimit(RLIMIT_NPROC, &ru); e)
++			return e;
++		*ret = (ru.rlim_cur == RLIM_INFINITY) ? -1 : ru.rlim_cur;
++	} break;
++	case _SC_LINE_MAX: {
++		*ret = LINE_MAX;
++	} break;
++	case _SC_IOV_MAX: {
++		*ret = IOV_MAX;
++	} break;
++	default:
++		return EINVAL;
++	}
++	return 0;
++}
++
++int sys_eventfd_create(unsigned int initval, int flags, int *fd) {
++	int64_t ret = syscall(SYS_eventfd_create, initval, flags);
++	if (ret < 0)
++		return -ret;
++	*fd = ret;
 +	return 0;
 +}
 +
@@ -792,10 +1203,10 @@ index 00000000..307376e6
 +}
 diff --git mlibc-clean/sysdeps/fishos/generic/socket.cpp mlibc-workdir/sysdeps/fishos/generic/socket.cpp
 new file mode 100644
-index 00000000..1c130b53
+index 00000000..5ddb2a22
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/generic/socket.cpp
-@@ -0,0 +1,194 @@
+@@ -0,0 +1,130 @@
 +#include <fishos/syscall.h>
 +#include <mlibc/all-sysdeps.hpp>
 +#include <mlibc/thread-entry.hpp>
@@ -869,97 +1280,33 @@ index 00000000..1c130b53
 +}
 +
 +int sys_getsockopt(int fd, int layer, int number, void *__restrict buffer, socklen_t *__restrict size) {
-+	(void)fd;
-+	(void)size;
-+	if (layer == SOL_SOCKET && number == SO_PEERCRED) {
-+		mlibc::infoLogger() << "\e[31mmlibc: getsockopt() call with SOL_SOCKET "
-+							   "and SO_PEERCRED is unimplemented\e[39m"
-+							<< frg::endlog;
-+		*(int *)buffer = 0;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_SNDBUF) {
-+		mlibc::infoLogger() << "\e[31mmlibc: getsockopt() call with SOL_SOCKET "
-+							   "and SO_SNDBUF is unimplemented\e[39m"
-+							<< frg::endlog;
-+		*(int *)buffer = 4096;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_TYPE) {
-+		mlibc::infoLogger()
-+			<< "\e[31mmlibc: getsockopt() call with SOL_SOCKET and SO_TYPE is "
-+			   "unimplemented, hardcoding SOCK_STREAM\e[39m"
-+			<< frg::endlog;
-+		*(int *)buffer = SOCK_STREAM;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_ERROR) {
-+		mlibc::infoLogger()
-+			<< "\e[31mmlibc: getsockopt() call with SOL_SOCKET and SO_ERROR is "
-+			   "unimplemented, hardcoding 0\e[39m"
-+			<< frg::endlog;
-+		*(int *)buffer = 0;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_KEEPALIVE) {
-+		mlibc::infoLogger()
-+			<< "\e[31mmlibc: getsockopt() call with SOL_SOCKET and "
-+			   "SO_KEEPALIVE is unimplemented, hardcoding 0\e[39m"
-+			<< frg::endlog;
-+		*(int *)buffer = 0;
-+		return 0;
-+	} else {
-+		mlibc::panicLogger()
-+			<< "\e[31mmlibc: Unexpected getsockopt() call, layer: " << layer
-+			<< " number: " << number << "\e[39m" << frg::endlog;
-+		__builtin_unreachable();
-+	}
-+
++	int64_t ret = syscall(SYS_getsockopt, fd, layer, number, (uintptr_t)buffer, (uintptr_t)size);
++	if (ret < 0)
++		return -ret;
 +	return 0;
 +}
 +
 +int sys_setsockopt(int fd, int layer, int number, const void *buffer, socklen_t size) {
-+	(void)fd;
-+	(void)buffer;
-+	(void)size;
++	int64_t ret = syscall(SYS_setsockopt, fd, layer, number, (uintptr_t)buffer, size);
++	if (ret < 0)
++		return -ret;
++	return 0;
++}
 +
-+	if (layer == SOL_SOCKET && number == SO_PASSCRED) {
-+		mlibc::infoLogger() << "\e[31mmlibc: setsockopt(SO_PASSCRED) is not "
-+							   "implemented correctly\e[39m"
-+							<< frg::endlog;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_ATTACH_FILTER) {
-+		mlibc::infoLogger() << "\e[31mmlibc: setsockopt(SO_ATTACH_FILTER) is "
-+							   "not implemented correctly\e[39m"
-+							<< frg::endlog;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_RCVBUFFORCE) {
-+		mlibc::infoLogger() << "\e[31mmlibc: setsockopt(SO_RCVBUFFORCE) is not "
-+							   "implemented correctly\e[39m"
-+							<< frg::endlog;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_SNDBUF) {
-+		mlibc::infoLogger() << "\e[31mmlibc: setsockopt() call with SOL_SOCKET "
-+							   "and SO_SNDBUF is unimplemented\e[39m"
-+							<< frg::endlog;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_KEEPALIVE) {
-+		mlibc::infoLogger() << "\e[31mmlibc: setsockopt() call with SOL_SOCKET "
-+							   "and SO_KEEPALIVE is unimplemented\e[39m"
-+							<< frg::endlog;
-+		return 0;
-+	} else if (layer == SOL_SOCKET && number == SO_REUSEADDR) {
-+		mlibc::infoLogger() << "\e[31mmlibc: setsockopt() call with SOL_SOCKET "
-+							   "and SO_REUSEADDR is unimplemented\e[39m"
-+							<< frg::endlog;
-+		return 0;
-+	} else if (layer == AF_NETLINK && number == SO_ACCEPTCONN) {
-+		mlibc::infoLogger() << "\e[31mmlibc: setsockopt() call with AF_NETLINK "
-+							   "and SO_ACCEPTCONN is unimplemented\e[39m"
-+							<< frg::endlog;
-+		return 0;
-+	} else {
-+		mlibc::infoLogger()
-+			<< "\e[31mmlibc: Unexpected setsockopt() call, layer: " << layer
-+			<< " number: " << number << "\e[39m" << frg::endlog;
-+		return 0;
-+	}
++int sys_sockname(int fd, struct sockaddr *addr_ptr, socklen_t max_addr_length, socklen_t *actual_length) {
++	int64_t ret = syscall(SYS_getsockname, fd, (uintptr_t)addr_ptr, (uintptr_t)&max_addr_length);
++	if (ret < 0)
++		return -ret;
++	*actual_length = max_addr_length;
++	return 0;
++}
++
++int sys_peername(int fd, struct sockaddr *addr_ptr, socklen_t max_addr_length, socklen_t *actual_length) {
++	int64_t ret = syscall(SYS_getpeername, fd, (uintptr_t)addr_ptr, (uintptr_t)&max_addr_length);
++	if (ret < 0)
++		return -ret;
++	*actual_length = max_addr_length;
++	return 0;
 +}
 +
 +int sys_shutdown(int sockfd, int how) {
@@ -1191,6 +1538,14 @@ index 00000000..595106b6
 @@ -0,0 +1 @@
 +../../../../abis/linux/ioctls.h
 \ No newline at end of file
+diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/ipc.h mlibc-workdir/sysdeps/fishos/include/abi-bits/ipc.h
+new file mode 120000
+index 00000000..2c7ffc4c
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/include/abi-bits/ipc.h
+@@ -0,0 +1 @@
++../../../../abis/linux/ipc.h
+\ No newline at end of file
 diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/limits.h mlibc-workdir/sysdeps/fishos/include/abi-bits/limits.h
 new file mode 120000
 index 00000000..6c88db2e
@@ -1263,6 +1618,14 @@ index 00000000..b2517b2c
 @@ -0,0 +1 @@
 +../../../../abis/linux/ptrace.h
 \ No newline at end of file
+diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/random.h mlibc-workdir/sysdeps/fishos/include/abi-bits/random.h
+new file mode 120000
+index 00000000..83fc3d96
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/include/abi-bits/random.h
+@@ -0,0 +1 @@
++../../../../abis/linux/random.h
+\ No newline at end of file
 diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/reboot.h mlibc-workdir/sysdeps/fishos/include/abi-bits/reboot.h
 new file mode 120000
 index 00000000..77013a41
@@ -1278,6 +1641,14 @@ index 00000000..88d74025
 +++ mlibc-workdir/sysdeps/fishos/include/abi-bits/resource.h
 @@ -0,0 +1 @@
 +../../../../abis/linux/resource.h
+\ No newline at end of file
+diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/rlim_t.h mlibc-workdir/sysdeps/fishos/include/abi-bits/rlim_t.h
+new file mode 120000
+index 00000000..e92eb5fb
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/include/abi-bits/rlim_t.h
+@@ -0,0 +1 @@
++../../../../abis/linux/rlim_t.h
 \ No newline at end of file
 diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/seek-whence.h mlibc-workdir/sysdeps/fishos/include/abi-bits/seek-whence.h
 new file mode 120000
@@ -1295,6 +1666,14 @@ index 00000000..067d8c4f
 @@ -0,0 +1 @@
 +../../../../abis/linux/shm.h
 \ No newline at end of file
+diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/sigevent.h mlibc-workdir/sysdeps/fishos/include/abi-bits/sigevent.h
+new file mode 120000
+index 00000000..83d069b5
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/include/abi-bits/sigevent.h
+@@ -0,0 +1 @@
++../../../../abis/linux/sigevent.h
+\ No newline at end of file
 diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/signal.h mlibc-workdir/sysdeps/fishos/include/abi-bits/signal.h
 new file mode 120000
 index 00000000..4dcb0b7c
@@ -1302,6 +1681,14 @@ index 00000000..4dcb0b7c
 +++ mlibc-workdir/sysdeps/fishos/include/abi-bits/signal.h
 @@ -0,0 +1 @@
 +../../../../abis/linux/signal.h
+\ No newline at end of file
+diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/sigval.h mlibc-workdir/sysdeps/fishos/include/abi-bits/sigval.h
+new file mode 120000
+index 00000000..ccd43a55
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/include/abi-bits/sigval.h
+@@ -0,0 +1 @@
++../../../../abis/linux/sigval.h
 \ No newline at end of file
 diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/socket.h mlibc-workdir/sysdeps/fishos/include/abi-bits/socket.h
 new file mode 120000
@@ -1383,6 +1770,22 @@ index 00000000..b3067778
 @@ -0,0 +1 @@
 +../../../../abis/linux/uid_t.h
 \ No newline at end of file
+diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/utmp-defines.h mlibc-workdir/sysdeps/fishos/include/abi-bits/utmp-defines.h
+new file mode 120000
+index 00000000..86176435
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/include/abi-bits/utmp-defines.h
+@@ -0,0 +1 @@
++../../../../abis/linux/utmp-defines.h
+\ No newline at end of file
+diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/utmpx.h mlibc-workdir/sysdeps/fishos/include/abi-bits/utmpx.h
+new file mode 120000
+index 00000000..c6a26774
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/include/abi-bits/utmpx.h
+@@ -0,0 +1 @@
++../../../../abis/linux/utmpx.h
+\ No newline at end of file
 diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/utsname.h mlibc-workdir/sysdeps/fishos/include/abi-bits/utsname.h
 new file mode 120000
 index 00000000..b2857547
@@ -1398,6 +1801,14 @@ index 00000000..bbe258cf
 +++ mlibc-workdir/sysdeps/fishos/include/abi-bits/vm-flags.h
 @@ -0,0 +1 @@
 +../../../../abis/linux/vm-flags.h
+\ No newline at end of file
+diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/vt.h mlibc-workdir/sysdeps/fishos/include/abi-bits/vt.h
+new file mode 120000
+index 00000000..5798a4ac
+--- /dev/null
++++ mlibc-workdir/sysdeps/fishos/include/abi-bits/vt.h
+@@ -0,0 +1 @@
++../../../../abis/linux/vt.h
 \ No newline at end of file
 diff --git mlibc-clean/sysdeps/fishos/include/abi-bits/wait.h mlibc-workdir/sysdeps/fishos/include/abi-bits/wait.h
 new file mode 120000
@@ -1415,313 +1826,94 @@ index 00000000..66412d70
 @@ -0,0 +1 @@
 +../../../../abis/linux/xattr.h
 \ No newline at end of file
-diff --git mlibc-clean/sysdeps/fishos/include/asm/ioctl.h mlibc-workdir/sysdeps/fishos/include/asm/ioctl.h
-new file mode 100644
-index 00000000..8cbb3645
---- /dev/null
-+++ mlibc-workdir/sysdeps/fishos/include/asm/ioctl.h
-@@ -0,0 +1,105 @@
-+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
-+#ifndef _ASM_GENERIC_IOCTL_H
-+#define _ASM_GENERIC_IOCTL_H
-+
-+/* ioctl command encoding: 32 bits total, command in lower 16 bits,
-+ * size of the parameter structure in the lower 14 bits of the
-+ * upper 16 bits.
-+ * Encoding the size of the parameter structure in the ioctl request
-+ * is useful for catching programs compiled with old versions
-+ * and to avoid overwriting user space outside the user buffer area.
-+ * The highest 2 bits are reserved for indicating the ``access mode''.
-+ * NOTE: This limits the max parameter size to 16kB -1 !
-+ */
-+
-+/*
-+ * The following is for compatibility across the various Linux
-+ * platforms.  The generic ioctl numbering scheme doesn't really enforce
-+ * a type field.  De facto, however, the top 8 bits of the lower 16
-+ * bits are indeed used as a type field, so we might just as well make
-+ * this explicit here.  Please be sure to use the decoding macros
-+ * below from now on.
-+ */
-+#define _IOC_NRBITS	8
-+#define _IOC_TYPEBITS	8
-+
-+/*
-+ * Let any architecture override either of the following before
-+ * including this file.
-+ */
-+
-+#ifndef _IOC_SIZEBITS
-+# define _IOC_SIZEBITS	14
-+#endif
-+
-+#ifndef _IOC_DIRBITS
-+# define _IOC_DIRBITS	2
-+#endif
-+
-+#define _IOC_NRMASK	((1 << _IOC_NRBITS)-1)
-+#define _IOC_TYPEMASK	((1 << _IOC_TYPEBITS)-1)
-+#define _IOC_SIZEMASK	((1 << _IOC_SIZEBITS)-1)
-+#define _IOC_DIRMASK	((1 << _IOC_DIRBITS)-1)
-+
-+#define _IOC_NRSHIFT	0
-+#define _IOC_TYPESHIFT	(_IOC_NRSHIFT+_IOC_NRBITS)
-+#define _IOC_SIZESHIFT	(_IOC_TYPESHIFT+_IOC_TYPEBITS)
-+#define _IOC_DIRSHIFT	(_IOC_SIZESHIFT+_IOC_SIZEBITS)
-+
-+/*
-+ * Direction bits, which any architecture can choose to override
-+ * before including this file.
-+ *
-+ * NOTE: _IOC_WRITE means userland is writing and kernel is
-+ * reading. _IOC_READ means userland is reading and kernel is writing.
-+ */
-+
-+#ifndef _IOC_NONE
-+# define _IOC_NONE	0U
-+#endif
-+
-+#ifndef _IOC_WRITE
-+# define _IOC_WRITE	1U
-+#endif
-+
-+#ifndef _IOC_READ
-+# define _IOC_READ	2U
-+#endif
-+
-+#define _IOC(dir,type,nr,size) \
-+	(((dir)  << _IOC_DIRSHIFT) | \
-+	 ((type) << _IOC_TYPESHIFT) | \
-+	 ((nr)   << _IOC_NRSHIFT) | \
-+	 ((size) << _IOC_SIZESHIFT))
-+
-+#define _IOC_TYPECHECK(t) (sizeof(t))
-+
-+/*
-+ * Used to create numbers.
-+ *
-+ * NOTE: _IOW means userland is writing and kernel is reading. _IOR
-+ * means userland is reading and kernel is writing.
-+ */
-+#define _IO(type,nr)		_IOC(_IOC_NONE,(type),(nr),0)
-+#define _IOR(type,nr,size)	_IOC(_IOC_READ,(type),(nr),(_IOC_TYPECHECK(size)))
-+#define _IOW(type,nr,size)	_IOC(_IOC_WRITE,(type),(nr),(_IOC_TYPECHECK(size)))
-+#define _IOWR(type,nr,size)	_IOC(_IOC_READ|_IOC_WRITE,(type),(nr),(_IOC_TYPECHECK(size)))
-+#define _IOR_BAD(type,nr,size)	_IOC(_IOC_READ,(type),(nr),sizeof(size))
-+#define _IOW_BAD(type,nr,size)	_IOC(_IOC_WRITE,(type),(nr),sizeof(size))
-+#define _IOWR_BAD(type,nr,size)	_IOC(_IOC_READ|_IOC_WRITE,(type),(nr),sizeof(size))
-+
-+/* used to decode ioctl numbers.. */
-+#define _IOC_DIR(nr)		(((nr) >> _IOC_DIRSHIFT) & _IOC_DIRMASK)
-+#define _IOC_TYPE(nr)		(((nr) >> _IOC_TYPESHIFT) & _IOC_TYPEMASK)
-+#define _IOC_NR(nr)		(((nr) >> _IOC_NRSHIFT) & _IOC_NRMASK)
-+#define _IOC_SIZE(nr)		(((nr) >> _IOC_SIZESHIFT) & _IOC_SIZEMASK)
-+
-+/* ...and for the drivers/sound files... */
-+
-+#define IOC_IN		(_IOC_WRITE << _IOC_DIRSHIFT)
-+#define IOC_OUT		(_IOC_READ << _IOC_DIRSHIFT)
-+#define IOC_INOUT	((_IOC_WRITE|_IOC_READ) << _IOC_DIRSHIFT)
-+#define IOCSIZE_MASK	(_IOC_SIZEMASK << _IOC_SIZESHIFT)
-+#define IOCSIZE_SHIFT	(_IOC_SIZESHIFT)
-+
-+#endif /* _ASM_GENERIC_IOCTL_H */
-diff --git mlibc-clean/sysdeps/fishos/include/asm/ioctls.h mlibc-workdir/sysdeps/fishos/include/asm/ioctls.h
-new file mode 100644
-index 00000000..bdbba9bf
---- /dev/null
-+++ mlibc-workdir/sysdeps/fishos/include/asm/ioctls.h
-@@ -0,0 +1,121 @@
-+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
-+#ifndef __ASM_GENERIC_IOCTLS_H
-+#define __ASM_GENERIC_IOCTLS_H
-+
-+#include <asm/ioctl.h>
-+
-+/*
-+ * These are the most common definitions for tty ioctl numbers.
-+ * Most of them do not use the recommended _IOC(), but there is
-+ * probably some source code out there hardcoding the number,
-+ * so we might as well use them for all new platforms.
-+ *
-+ * The architectures that use different values here typically
-+ * try to be compatible with some Unix variants for the same
-+ * architecture.
-+ */
-+
-+/* 0x54 is just a magic number to make these relatively unique ('T') */
-+
-+#define TCGETS		0x5401
-+#define TCSETS		0x5402
-+#define TCSETSW		0x5403
-+#define TCSETSF		0x5404
-+#define TCGETA		0x5405
-+#define TCSETA		0x5406
-+#define TCSETAW		0x5407
-+#define TCSETAF		0x5408
-+#define TCSBRK		0x5409
-+#define TCXONC		0x540A
-+#define TCFLSH		0x540B
-+#define TIOCEXCL	0x540C
-+#define TIOCNXCL	0x540D
-+#define TIOCSCTTY	0x540E
-+#define TIOCGPGRP	0x540F
-+#define TIOCSPGRP	0x5410
-+#define TIOCOUTQ	0x5411
-+#define TIOCSTI		0x5412
-+#define TIOCGWINSZ	0x5413
-+#define TIOCSWINSZ	0x5414
-+#define TIOCMGET	0x5415
-+#define TIOCMBIS	0x5416
-+#define TIOCMBIC	0x5417
-+#define TIOCMSET	0x5418
-+#define TIOCGSOFTCAR	0x5419
-+#define TIOCSSOFTCAR	0x541A
-+#define FIONREAD	0x541B
-+#define TIOCINQ		FIONREAD
-+#define TIOCLINUX	0x541C
-+#define TIOCCONS	0x541D
-+#define TIOCGSERIAL	0x541E
-+#define TIOCSSERIAL	0x541F
-+#define TIOCPKT		0x5420
-+#define FIONBIO		0x5421
-+#define TIOCNOTTY	0x5422
-+#define TIOCSETD	0x5423
-+#define TIOCGETD	0x5424
-+#define TCSBRKP		0x5425	/* Needed for POSIX tcsendbreak() */
-+#define TIOCSBRK	0x5427  /* BSD compatibility */
-+#define TIOCCBRK	0x5428  /* BSD compatibility */
-+#define TIOCGSID	0x5429  /* Return the session ID of FD */
-+#define TCGETS2		_IOR('T', 0x2A, struct termios2)
-+#define TCSETS2		_IOW('T', 0x2B, struct termios2)
-+#define TCSETSW2	_IOW('T', 0x2C, struct termios2)
-+#define TCSETSF2	_IOW('T', 0x2D, struct termios2)
-+#define TIOCGRS485	0x542E
-+#ifndef TIOCSRS485
-+#define TIOCSRS485	0x542F
-+#endif
-+#define TIOCGPTN	_IOR('T', 0x30, unsigned int) /* Get Pty Number (of pty-mux device) */
-+#define TIOCSPTLCK	_IOW('T', 0x31, int)  /* Lock/unlock Pty */
-+#define TIOCGDEV	_IOR('T', 0x32, unsigned int) /* Get primary device node of /dev/console */
-+#define TCGETX		0x5432 /* SYS5 TCGETX compatibility */
-+#define TCSETX		0x5433
-+#define TCSETXF		0x5434
-+#define TCSETXW		0x5435
-+#define TIOCSIG		_IOW('T', 0x36, int)  /* pty: generate signal */
-+#define TIOCVHANGUP	0x5437
-+#define TIOCGPKT	_IOR('T', 0x38, int) /* Get packet mode state */
-+#define TIOCGPTLCK	_IOR('T', 0x39, int) /* Get Pty lock state */
-+#define TIOCGEXCL	_IOR('T', 0x40, int) /* Get exclusive mode state */
-+#define TIOCGPTPEER	_IO('T', 0x41) /* Safely open the slave */
-+#define TIOCGISO7816	_IOR('T', 0x42, struct serial_iso7816)
-+#define TIOCSISO7816	_IOWR('T', 0x43, struct serial_iso7816)
-+
-+#define FIONCLEX	0x5450
-+#define FIOCLEX		0x5451
-+#define FIOASYNC	0x5452
-+#define TIOCSERCONFIG	0x5453
-+#define TIOCSERGWILD	0x5454
-+#define TIOCSERSWILD	0x5455
-+#define TIOCGLCKTRMIOS	0x5456
-+#define TIOCSLCKTRMIOS	0x5457
-+#define TIOCSERGSTRUCT	0x5458 /* For debugging only */
-+#define TIOCSERGETLSR   0x5459 /* Get line status register */
-+#define TIOCSERGETMULTI 0x545A /* Get multiport config  */
-+#define TIOCSERSETMULTI 0x545B /* Set multiport config */
-+
-+#define TIOCMIWAIT	0x545C	/* wait for a change on serial input line(s) */
-+#define TIOCGICOUNT	0x545D	/* read serial port __inline__ interrupt counts */
-+
-+/*
-+ * Some arches already define FIOQSIZE due to a historical
-+ * conflict with a Hayes modem-specific ioctl value.
-+ */
-+#ifndef FIOQSIZE
-+# define FIOQSIZE	0x5460
-+#endif
-+
-+/* Used for packet mode */
-+#define TIOCPKT_DATA		 0
-+#define TIOCPKT_FLUSHREAD	 1
-+#define TIOCPKT_FLUSHWRITE	 2
-+#define TIOCPKT_STOP		 4
-+#define TIOCPKT_START		 8
-+#define TIOCPKT_NOSTOP		16
-+#define TIOCPKT_DOSTOP		32
-+#define TIOCPKT_IOCTL		64
-+
-+#define TIOCSER_TEMT	0x01	/* Transmitter physically empty */
-+
-+#endif /* __ASM_GENERIC_IOCTLS_H */
 diff --git mlibc-clean/sysdeps/fishos/include/fishos/syscall.h mlibc-workdir/sysdeps/fishos/include/fishos/syscall.h
 new file mode 100755
-index 00000000..fa57be8b
+index 00000000..452c9021
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/include/fishos/syscall.h
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,148 @@
 +#ifndef SYSCALL_H
 +#define SYSCALL_H
 +
 +#include <stdint.h>
 +
-+#define SYS_exit           0
-+#define SYS_open           1
-+#define SYS_mkdir          2
-+#define SYS_close          3
-+#define SYS_read           4
-+#define SYS_pread          5
-+#define SYS_write          6
-+#define SYS_pwrite         7
-+#define SYS_seek           8
-+#define SYS_getcwd         9
-+#define SYS_chdir         10
-+#define SYS_mmap          11
-+#define SYS_munmap        12
-+#define SYS_fork          13
-+#define SYS_execve        14
-+#define SYS_sleep         15
-+#define SYS_set_fs_base   16
-+#define SYS_readdir       17
-+#define SYS_unlink        18
-+#define SYS_fcntl         19
-+#define SYS_dup           20
-+#define SYS_stat          21
-+#define SYS_waitpid       22
-+#define SYS_uname         23
-+#define SYS_rename        24
-+#define SYS_poll          25
-+#define SYS_pipe          26
-+#define SYS_readlink      27
-+#define SYS_ioctl         28
-+#define SYS_clock_gettime 29
-+#define SYS_clock_getres  30
-+#define SYS_socket        31
-+#define SYS_socketpair    32
-+#define SYS_bind          33
-+#define SYS_connect       34
-+#define SYS_listen        35
-+#define SYS_accept        36
-+#define SYS_recvmsg       37
-+#define SYS_sendmsg       38
-+#define SYS_shutdown      39
-+#define SYS_link          40
-+#define SYS_symlink       41
-+#define SYS_thread_spawn  42
-+#define SYS_thread_exit   43
-+#define SYS_futex_wait    44
-+#define SYS_futex_wake    45
-+#define SYS_sigentry      46
-+#define SYS_sigreturn     47
-+#define SYS_sigmask       48
-+#define SYS_sigaction     49
-+#define SYS_kill          50
-+#define SYS_gettid        51
-+#define SYS_getpid        52
-+#define SYS_getppid       53
-+#define SYS_getpgid       54
-+#define SYS_setpgid       55
-+#define SYS_getsid        56
-+#define SYS_setsid        57
++enum SyscallNum {
++    SYS_exit,
++    SYS_open,
++    SYS_mkdir,
++    SYS_close,
++    SYS_read,
++    SYS_pread,
++    SYS_write,
++    SYS_pwrite,
++    SYS_seek,
++    SYS_getcwd,
++    SYS_chdir,
++    SYS_mmap,
++    SYS_munmap,
++    SYS_fork,
++    SYS_execve,
++    SYS_sleep,
++    SYS_set_fs_base,
++    SYS_readdir,
++    SYS_unlink,
++    SYS_fcntl,
++    SYS_dup,
++    SYS_stat,
++    SYS_waitpid,
++    SYS_uname,
++    SYS_rename,
++    SYS_poll,
++    SYS_pipe,
++    SYS_readlink,
++    SYS_ioctl,
++    SYS_clock_gettime,
++    SYS_clock_getres,
++    SYS_socket,
++    SYS_socketpair,
++    SYS_bind,
++    SYS_connect,
++    SYS_listen,
++    SYS_accept,
++    SYS_recvmsg,
++    SYS_sendmsg,
++    SYS_shutdown,
++    SYS_link,
++    SYS_symlink,
++    SYS_thread_spawn,
++    SYS_thread_exit,
++    SYS_futex,
++    SYS_sigaltstack,
++    SYS_sigentry,
++    SYS_sigreturn,
++    SYS_sigmask,
++    SYS_sigaction,
++    SYS_kill,
++    SYS_gettid,
++    SYS_getpid,
++    SYS_getppid,
++    SYS_getpgid,
++    SYS_setpgid,
++    SYS_getsid,
++    SYS_setsid,
++    SYS_sysinfo,
++    SYS_mprotect,
++    SYS_getsockopt,
++    SYS_setsockopt,
++    SYS_getsockname,
++    SYS_getpeername,
++    SYS_fchdir,
++    SYS_umask,
++    SYS_thread_getname,
++    SYS_thread_setname,
++    SYS_inotify_create,
++    SYS_inotify_add_watch,
++    SYS_inotify_rm_watch,
++    SYS_sched_yield,
++    SYS_eventfd_create,
++    SYS_readv,
++    SYS_writev
++};
 +
 +#define SYSCALL_INLINE [[gnu::always_inline]] inline
 +
@@ -1788,412 +1980,6 @@ index 00000000..fa57be8b
 +}
 +
 +#endif
-diff --git mlibc-clean/sysdeps/fishos/include/linux/fb.h mlibc-workdir/sysdeps/fishos/include/linux/fb.h
-new file mode 100644
-index 00000000..d5e6d88d
---- /dev/null
-+++ mlibc-workdir/sysdeps/fishos/include/linux/fb.h
-@@ -0,0 +1,400 @@
-+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
-+#ifndef _LINUX_FB_H
-+#define _LINUX_FB_H
-+
-+#include <stddef.h>
-+#include <asm/ioctl.h>
-+
-+/* Definitions of frame buffers						*/
-+
-+#define FB_MAX			32	/* sufficient for now */
-+
-+/* ioctls
-+   0x46 is 'F'								*/
-+#define FBIOGET_VSCREENINFO	0x4600
-+#define FBIOPUT_VSCREENINFO	0x4601
-+#define FBIOGET_FSCREENINFO	0x4602
-+#define FBIOGETCMAP		0x4604
-+#define FBIOPUTCMAP		0x4605
-+#define FBIOPAN_DISPLAY		0x4606
-+#define FBIO_CURSOR            _IOWR('F', 0x08, struct fb_cursor)
-+/* 0x4607-0x460B are defined below */
-+/* #define FBIOGET_MONITORSPEC	0x460C */
-+/* #define FBIOPUT_MONITORSPEC	0x460D */
-+/* #define FBIOSWITCH_MONIBIT	0x460E */
-+#define FBIOGET_CON2FBMAP	0x460F
-+#define FBIOPUT_CON2FBMAP	0x4610
-+#define FBIOBLANK		0x4611		/* arg: 0 or vesa level + 1 */
-+#define FBIOGET_VBLANK		_IOR('F', 0x12, struct fb_vblank)
-+#define FBIO_ALLOC              0x4613
-+#define FBIO_FREE               0x4614
-+#define FBIOGET_GLYPH           0x4615
-+#define FBIOGET_HWCINFO         0x4616
-+#define FBIOPUT_MODEINFO        0x4617
-+#define FBIOGET_DISPINFO        0x4618
-+#define FBIO_WAITFORVSYNC	_IOW('F', 0x20, uint32_t)
-+
-+#define FB_TYPE_PACKED_PIXELS		0	/* Packed Pixels	*/
-+#define FB_TYPE_PLANES			1	/* Non interleaved planes */
-+#define FB_TYPE_INTERLEAVED_PLANES	2	/* Interleaved planes	*/
-+#define FB_TYPE_TEXT			3	/* Text/attributes	*/
-+#define FB_TYPE_VGA_PLANES		4	/* EGA/VGA planes	*/
-+#define FB_TYPE_FOURCC			5	/* Type identified by a V4L2 FOURCC */
-+
-+#define FB_AUX_TEXT_MDA		0	/* Monochrome text */
-+#define FB_AUX_TEXT_CGA		1	/* CGA/EGA/VGA Color text */
-+#define FB_AUX_TEXT_S3_MMIO	2	/* S3 MMIO fasttext */
-+#define FB_AUX_TEXT_MGA_STEP16	3	/* MGA Millenium I: text, attr, 14 reserved bytes */
-+#define FB_AUX_TEXT_MGA_STEP8	4	/* other MGAs:      text, attr,  6 reserved bytes */
-+#define FB_AUX_TEXT_SVGA_GROUP	8	/* 8-15: SVGA tileblit compatible modes */
-+#define FB_AUX_TEXT_SVGA_MASK	7	/* lower three bits says step */
-+#define FB_AUX_TEXT_SVGA_STEP2	8	/* SVGA text mode:  text, attr */
-+#define FB_AUX_TEXT_SVGA_STEP4	9	/* SVGA text mode:  text, attr,  2 reserved bytes */
-+#define FB_AUX_TEXT_SVGA_STEP8	10	/* SVGA text mode:  text, attr,  6 reserved bytes */
-+#define FB_AUX_TEXT_SVGA_STEP16	11	/* SVGA text mode:  text, attr, 14 reserved bytes */
-+#define FB_AUX_TEXT_SVGA_LAST	15	/* reserved up to 15 */
-+
-+#define FB_AUX_VGA_PLANES_VGA4		0	/* 16 color planes (EGA/VGA) */
-+#define FB_AUX_VGA_PLANES_CFB4		1	/* CFB4 in planes (VGA) */
-+#define FB_AUX_VGA_PLANES_CFB8		2	/* CFB8 in planes (VGA) */
-+
-+#define FB_VISUAL_MONO01		0	/* Monochr. 1=Black 0=White */
-+#define FB_VISUAL_MONO10		1	/* Monochr. 1=White 0=Black */
-+#define FB_VISUAL_TRUECOLOR		2	/* True color	*/
-+#define FB_VISUAL_PSEUDOCOLOR		3	/* Pseudo color (like atari) */
-+#define FB_VISUAL_DIRECTCOLOR		4	/* Direct color */
-+#define FB_VISUAL_STATIC_PSEUDOCOLOR	5	/* Pseudo color readonly */
-+#define FB_VISUAL_FOURCC		6	/* Visual identified by a V4L2 FOURCC */
-+
-+#define FB_ACCEL_NONE		0	/* no hardware accelerator	*/
-+#define FB_ACCEL_ATARIBLITT	1	/* Atari Blitter		*/
-+#define FB_ACCEL_AMIGABLITT	2	/* Amiga Blitter                */
-+#define FB_ACCEL_S3_TRIO64	3	/* Cybervision64 (S3 Trio64)    */
-+#define FB_ACCEL_NCR_77C32BLT	4	/* RetinaZ3 (NCR 77C32BLT)      */
-+#define FB_ACCEL_S3_VIRGE	5	/* Cybervision64/3D (S3 ViRGE)	*/
-+#define FB_ACCEL_ATI_MACH64GX	6	/* ATI Mach 64GX family		*/
-+#define FB_ACCEL_DEC_TGA	7	/* DEC 21030 TGA		*/
-+#define FB_ACCEL_ATI_MACH64CT	8	/* ATI Mach 64CT family		*/
-+#define FB_ACCEL_ATI_MACH64VT	9	/* ATI Mach 64CT family VT class */
-+#define FB_ACCEL_ATI_MACH64GT	10	/* ATI Mach 64CT family GT class */
-+#define FB_ACCEL_SUN_CREATOR	11	/* Sun Creator/Creator3D	*/
-+#define FB_ACCEL_SUN_CGSIX	12	/* Sun cg6			*/
-+#define FB_ACCEL_SUN_LEO	13	/* Sun leo/zx			*/
-+#define FB_ACCEL_IMS_TWINTURBO	14	/* IMS Twin Turbo		*/
-+#define FB_ACCEL_3DLABS_PERMEDIA2 15	/* 3Dlabs Permedia 2		*/
-+#define FB_ACCEL_MATROX_MGA2064W 16	/* Matrox MGA2064W (Millenium)	*/
-+#define FB_ACCEL_MATROX_MGA1064SG 17	/* Matrox MGA1064SG (Mystique)	*/
-+#define FB_ACCEL_MATROX_MGA2164W 18	/* Matrox MGA2164W (Millenium II) */
-+#define FB_ACCEL_MATROX_MGA2164W_AGP 19	/* Matrox MGA2164W (Millenium II) */
-+#define FB_ACCEL_MATROX_MGAG100	20	/* Matrox G100 (Productiva G100) */
-+#define FB_ACCEL_MATROX_MGAG200	21	/* Matrox G200 (Myst, Mill, ...) */
-+#define FB_ACCEL_SUN_CG14	22	/* Sun cgfourteen		 */
-+#define FB_ACCEL_SUN_BWTWO	23	/* Sun bwtwo			*/
-+#define FB_ACCEL_SUN_CGTHREE	24	/* Sun cgthree			*/
-+#define FB_ACCEL_SUN_TCX	25	/* Sun tcx			*/
-+#define FB_ACCEL_MATROX_MGAG400	26	/* Matrox G400			*/
-+#define FB_ACCEL_NV3		27	/* nVidia RIVA 128              */
-+#define FB_ACCEL_NV4		28	/* nVidia RIVA TNT		*/
-+#define FB_ACCEL_NV5		29	/* nVidia RIVA TNT2		*/
-+#define FB_ACCEL_CT_6555x	30	/* C&T 6555x			*/
-+#define FB_ACCEL_3DFX_BANSHEE	31	/* 3Dfx Banshee			*/
-+#define FB_ACCEL_ATI_RAGE128	32	/* ATI Rage128 family		*/
-+#define FB_ACCEL_IGS_CYBER2000	33	/* CyberPro 2000		*/
-+#define FB_ACCEL_IGS_CYBER2010	34	/* CyberPro 2010		*/
-+#define FB_ACCEL_IGS_CYBER5000	35	/* CyberPro 5000		*/
-+#define FB_ACCEL_SIS_GLAMOUR    36	/* SiS 300/630/540              */
-+#define FB_ACCEL_3DLABS_PERMEDIA3 37	/* 3Dlabs Permedia 3		*/
-+#define FB_ACCEL_ATI_RADEON	38	/* ATI Radeon family		*/
-+#define FB_ACCEL_I810           39      /* Intel 810/815                */
-+#define FB_ACCEL_SIS_GLAMOUR_2  40	/* SiS 315, 650, 740		*/
-+#define FB_ACCEL_SIS_XABRE      41	/* SiS 330 ("Xabre")		*/
-+#define FB_ACCEL_I830           42      /* Intel 830M/845G/85x/865G     */
-+#define FB_ACCEL_NV_10          43      /* nVidia Arch 10               */
-+#define FB_ACCEL_NV_20          44      /* nVidia Arch 20               */
-+#define FB_ACCEL_NV_30          45      /* nVidia Arch 30               */
-+#define FB_ACCEL_NV_40          46      /* nVidia Arch 40               */
-+#define FB_ACCEL_XGI_VOLARI_V	47	/* XGI Volari V3XT, V5, V8      */
-+#define FB_ACCEL_XGI_VOLARI_Z	48	/* XGI Volari Z7                */
-+#define FB_ACCEL_OMAP1610	49	/* TI OMAP16xx                  */
-+#define FB_ACCEL_TRIDENT_TGUI	50	/* Trident TGUI			*/
-+#define FB_ACCEL_TRIDENT_3DIMAGE 51	/* Trident 3DImage		*/
-+#define FB_ACCEL_TRIDENT_BLADE3D 52	/* Trident Blade3D		*/
-+#define FB_ACCEL_TRIDENT_BLADEXP 53	/* Trident BladeXP		*/
-+#define FB_ACCEL_CIRRUS_ALPINE   53	/* Cirrus Logic 543x/544x/5480	*/
-+#define FB_ACCEL_NEOMAGIC_NM2070 90	/* NeoMagic NM2070              */
-+#define FB_ACCEL_NEOMAGIC_NM2090 91	/* NeoMagic NM2090              */
-+#define FB_ACCEL_NEOMAGIC_NM2093 92	/* NeoMagic NM2093              */
-+#define FB_ACCEL_NEOMAGIC_NM2097 93	/* NeoMagic NM2097              */
-+#define FB_ACCEL_NEOMAGIC_NM2160 94	/* NeoMagic NM2160              */
-+#define FB_ACCEL_NEOMAGIC_NM2200 95	/* NeoMagic NM2200              */
-+#define FB_ACCEL_NEOMAGIC_NM2230 96	/* NeoMagic NM2230              */
-+#define FB_ACCEL_NEOMAGIC_NM2360 97	/* NeoMagic NM2360              */
-+#define FB_ACCEL_NEOMAGIC_NM2380 98	/* NeoMagic NM2380              */
-+#define FB_ACCEL_PXA3XX		 99	/* PXA3xx			*/
-+
-+#define FB_ACCEL_SAVAGE4        0x80	/* S3 Savage4                   */
-+#define FB_ACCEL_SAVAGE3D       0x81	/* S3 Savage3D                  */
-+#define FB_ACCEL_SAVAGE3D_MV    0x82	/* S3 Savage3D-MV               */
-+#define FB_ACCEL_SAVAGE2000     0x83	/* S3 Savage2000                */
-+#define FB_ACCEL_SAVAGE_MX_MV   0x84	/* S3 Savage/MX-MV              */
-+#define FB_ACCEL_SAVAGE_MX      0x85	/* S3 Savage/MX                 */
-+#define FB_ACCEL_SAVAGE_IX_MV   0x86	/* S3 Savage/IX-MV              */
-+#define FB_ACCEL_SAVAGE_IX      0x87	/* S3 Savage/IX                 */
-+#define FB_ACCEL_PROSAVAGE_PM   0x88	/* S3 ProSavage PM133           */
-+#define FB_ACCEL_PROSAVAGE_KM   0x89	/* S3 ProSavage KM133           */
-+#define FB_ACCEL_S3TWISTER_P    0x8a	/* S3 Twister                   */
-+#define FB_ACCEL_S3TWISTER_K    0x8b	/* S3 TwisterK                  */
-+#define FB_ACCEL_SUPERSAVAGE    0x8c    /* S3 Supersavage               */
-+#define FB_ACCEL_PROSAVAGE_DDR  0x8d	/* S3 ProSavage DDR             */
-+#define FB_ACCEL_PROSAVAGE_DDRK 0x8e	/* S3 ProSavage DDR-K           */
-+
-+#define FB_ACCEL_PUV3_UNIGFX	0xa0	/* PKUnity-v3 Unigfx		*/
-+
-+#define FB_CAP_FOURCC		1	/* Device supports FOURCC-based formats */
-+
-+struct fb_fix_screeninfo {
-+	char id[16];			/* identification string eg "TT Builtin" */
-+	unsigned long smem_start;	/* Start of frame buffer mem */
-+					/* (physical address) */
-+	uint32_t smem_len;			/* Length of frame buffer mem */
-+	uint32_t type;			/* see FB_TYPE_*		*/
-+	uint32_t type_aux;			/* Interleave for interleaved Planes */
-+	uint32_t visual;			/* see FB_VISUAL_*		*/ 
-+	uint16_t xpanstep;			/* zero if no hardware panning  */
-+	uint16_t ypanstep;			/* zero if no hardware panning  */
-+	uint16_t ywrapstep;		/* zero if no hardware ywrap    */
-+	uint32_t line_length;		/* length of a line in bytes    */
-+	unsigned long mmio_start;	/* Start of Memory Mapped I/O   */
-+					/* (physical address) */
-+	uint32_t mmio_len;			/* Length of Memory Mapped I/O  */
-+	uint32_t accel;			/* Indicate to driver which	*/
-+					/*  specific chip/card we have	*/
-+	uint16_t capabilities;		/* see FB_CAP_*			*/
-+	uint16_t reserved[2];		/* Reserved for future compatibility */
-+};
-+
-+/* Interpretation of offset for color fields: All offsets are from the right,
-+ * inside a "pixel" value, which is exactly 'bits_per_pixel' wide (means: you
-+ * can use the offset as right argument to <<). A pixel afterwards is a bit
-+ * stream and is written to video memory as that unmodified.
-+ *
-+ * For pseudocolor: offset and length should be the same for all color
-+ * components. Offset specifies the position of the least significant bit
-+ * of the palette index in a pixel value. Length indicates the number
-+ * of available palette entries (i.e. # of entries = 1 << length).
-+ */
-+struct fb_bitfield {
-+	uint32_t offset;			/* beginning of bitfield	*/
-+	uint32_t length;			/* length of bitfield		*/
-+	uint32_t msb_right;		/* != 0 : Most significant bit is */ 
-+					/* right */ 
-+};
-+
-+#define FB_NONSTD_HAM		1	/* Hold-And-Modify (HAM)        */
-+#define FB_NONSTD_REV_PIX_IN_B	2	/* order of pixels in each byte is reversed */
-+
-+#define FB_ACTIVATE_NOW		0	/* set values immediately (or vbl)*/
-+#define FB_ACTIVATE_NXTOPEN	1	/* activate on next open	*/
-+#define FB_ACTIVATE_TEST	2	/* don't set, round up impossible */
-+#define FB_ACTIVATE_MASK       15
-+					/* values			*/
-+#define FB_ACTIVATE_VBL	       16	/* activate values on next vbl  */
-+#define FB_CHANGE_CMAP_VBL     32	/* change colormap on vbl	*/
-+#define FB_ACTIVATE_ALL	       64	/* change all VCs on this fb	*/
-+#define FB_ACTIVATE_FORCE     128	/* force apply even when no change*/
-+#define FB_ACTIVATE_INV_MODE  256       /* invalidate videomode */
-+#define FB_ACTIVATE_KD_TEXT   512       /* for KDSET vt ioctl */
-+
-+#define FB_ACCELF_TEXT		1	/* (OBSOLETE) see fb_info.flags and vc_mode */
-+
-+#define FB_SYNC_HOR_HIGH_ACT	1	/* horizontal sync high active	*/
-+#define FB_SYNC_VERT_HIGH_ACT	2	/* vertical sync high active	*/
-+#define FB_SYNC_EXT		4	/* external sync		*/
-+#define FB_SYNC_COMP_HIGH_ACT	8	/* composite sync high active   */
-+#define FB_SYNC_BROADCAST	16	/* broadcast video timings      */
-+					/* vtotal = 144d/288n/576i => PAL  */
-+					/* vtotal = 121d/242n/484i => NTSC */
-+#define FB_SYNC_ON_GREEN	32	/* sync on green */
-+
-+#define FB_VMODE_NONINTERLACED  0	/* non interlaced */
-+#define FB_VMODE_INTERLACED	1	/* interlaced	*/
-+#define FB_VMODE_DOUBLE		2	/* double scan */
-+#define FB_VMODE_ODD_FLD_FIRST	4	/* interlaced: top line first */
-+#define FB_VMODE_MASK		255
-+
-+#define FB_VMODE_YWRAP		256	/* ywrap instead of panning     */
-+#define FB_VMODE_SMOOTH_XPAN	512	/* smooth xpan possible (internally used) */
-+#define FB_VMODE_CONUPDATE	512	/* don't update x/yoffset	*/
-+
-+/*
-+ * Display rotation support
-+ */
-+#define FB_ROTATE_UR      0
-+#define FB_ROTATE_CW      1
-+#define FB_ROTATE_UD      2
-+#define FB_ROTATE_CCW     3
-+
-+#define PICOS2KHZ(a) (1000000000UL/(a))
-+#define KHZ2PICOS(a) (1000000000UL/(a))
-+
-+struct fb_var_screeninfo {
-+	uint32_t xres;			/* visible resolution		*/
-+	uint32_t yres;
-+	uint32_t xres_virtual;		/* virtual resolution		*/
-+	uint32_t yres_virtual;
-+	uint32_t xoffset;			/* offset from virtual to visible */
-+	uint32_t yoffset;			/* resolution			*/
-+
-+	uint32_t bits_per_pixel;		/* guess what			*/
-+	uint32_t grayscale;		/* 0 = color, 1 = grayscale,	*/
-+					/* >1 = FOURCC			*/
-+	struct fb_bitfield red;		/* bitfield in fb mem if true color, */
-+	struct fb_bitfield green;	/* else only length is significant */
-+	struct fb_bitfield blue;
-+	struct fb_bitfield transp;	/* transparency			*/	
-+
-+	uint32_t nonstd;			/* != 0 Non standard pixel format */
-+
-+	uint32_t activate;			/* see FB_ACTIVATE_*		*/
-+
-+	uint32_t height;			/* height of picture in mm    */
-+	uint32_t width;			/* width of picture in mm     */
-+
-+	uint32_t accel_flags;		/* (OBSOLETE) see fb_info.flags */
-+
-+	/* Timing: All values in pixclocks, except pixclock (of course) */
-+	uint32_t pixclock;			/* pixel clock in ps (pico seconds) */
-+	uint32_t left_margin;		/* time from sync to picture	*/
-+	uint32_t right_margin;		/* time from picture to sync	*/
-+	uint32_t upper_margin;		/* time from sync to picture	*/
-+	uint32_t lower_margin;
-+	uint32_t hsync_len;		/* length of horizontal sync	*/
-+	uint32_t vsync_len;		/* length of vertical sync	*/
-+	uint32_t sync;			/* see FB_SYNC_*		*/
-+	uint32_t vmode;			/* see FB_VMODE_*		*/
-+	uint32_t rotate;			/* angle we rotate counter clockwise */
-+	uint32_t colorspace;		/* colorspace for FOURCC-based modes */
-+	uint32_t reserved[4];		/* Reserved for future compatibility */
-+};
-+
-+struct fb_cmap {
-+	uint32_t start;			/* First entry	*/
-+	uint32_t len;			/* Number of entries */
-+	uint16_t *red;			/* Red values	*/
-+	uint16_t *green;
-+	uint16_t *blue;
-+	uint16_t *transp;			/* transparency, can be NULL */
-+};
-+
-+struct fb_con2fbmap {
-+	uint32_t console;
-+	uint32_t framebuffer;
-+};
-+
-+/* VESA Blanking Levels */
-+#define VESA_NO_BLANKING        0
-+#define VESA_VSYNC_SUSPEND      1
-+#define VESA_HSYNC_SUSPEND      2
-+#define VESA_POWERDOWN          3
-+
-+
-+enum {
-+	/* screen: unblanked, hsync: on,  vsync: on */
-+	FB_BLANK_UNBLANK       = VESA_NO_BLANKING,
-+
-+	/* screen: blanked,   hsync: on,  vsync: on */
-+	FB_BLANK_NORMAL        = VESA_NO_BLANKING + 1,
-+
-+	/* screen: blanked,   hsync: on,  vsync: off */
-+	FB_BLANK_VSYNC_SUSPEND = VESA_VSYNC_SUSPEND + 1,
-+
-+	/* screen: blanked,   hsync: off, vsync: on */
-+	FB_BLANK_HSYNC_SUSPEND = VESA_HSYNC_SUSPEND + 1,
-+
-+	/* screen: blanked,   hsync: off, vsync: off */
-+	FB_BLANK_POWERDOWN     = VESA_POWERDOWN + 1
-+};
-+
-+#define FB_VBLANK_VBLANKING	0x001	/* currently in a vertical blank */
-+#define FB_VBLANK_HBLANKING	0x002	/* currently in a horizontal blank */
-+#define FB_VBLANK_HAVE_VBLANK	0x004	/* vertical blanks can be detected */
-+#define FB_VBLANK_HAVE_HBLANK	0x008	/* horizontal blanks can be detected */
-+#define FB_VBLANK_HAVE_COUNT	0x010	/* global retrace counter is available */
-+#define FB_VBLANK_HAVE_VCOUNT	0x020	/* the vcount field is valid */
-+#define FB_VBLANK_HAVE_HCOUNT	0x040	/* the hcount field is valid */
-+#define FB_VBLANK_VSYNCING	0x080	/* currently in a vsync */
-+#define FB_VBLANK_HAVE_VSYNC	0x100	/* verical syncs can be detected */
-+
-+struct fb_vblank {
-+	uint32_t flags;			/* FB_VBLANK flags */
-+	uint32_t count;			/* counter of retraces since boot */
-+	uint32_t vcount;			/* current scanline position */
-+	uint32_t hcount;			/* current scandot position */
-+	uint32_t reserved[4];		/* reserved for future compatibility */
-+};
-+
-+/* Internal HW accel */
-+#define ROP_COPY 0
-+#define ROP_XOR  1
-+
-+struct fb_copyarea {
-+	uint32_t dx;
-+	uint32_t dy;
-+	uint32_t width;
-+	uint32_t height;
-+	uint32_t sx;
-+	uint32_t sy;
-+};
-+
-+struct fb_fillrect {
-+	uint32_t dx;	/* screen-relative */
-+	uint32_t dy;
-+	uint32_t width;
-+	uint32_t height;
-+	uint32_t color;
-+	uint32_t rop;
-+};
-+
-+struct fb_image {
-+	uint32_t dx;		/* Where to place image */
-+	uint32_t dy;
-+	uint32_t width;		/* Size of image */
-+	uint32_t height;
-+	uint32_t fg_color;		/* Only used when a mono bitmap */
-+	uint32_t bg_color;
-+	uint8_t  depth;		/* Depth of the image */
-+	const char *data;	/* Pointer to image data */
-+	struct fb_cmap cmap;	/* color map info */
-+};
-+
-+/*
-+ * hardware cursor control
-+ */
-+
-+#define FB_CUR_SETIMAGE 0x01
-+#define FB_CUR_SETPOS   0x02
-+#define FB_CUR_SETHOT   0x04
-+#define FB_CUR_SETCMAP  0x08
-+#define FB_CUR_SETSHAPE 0x10
-+#define FB_CUR_SETSIZE	0x20
-+#define FB_CUR_SETALL   0xFF
-+
-+struct fbcurpos {
-+	uint16_t x, y;
-+};
-+
-+struct fb_cursor {
-+	uint16_t set;		/* what to set */
-+	uint16_t enable;		/* cursor on/off */
-+	uint16_t rop;		/* bitop operation */
-+	const char *mask;	/* cursor mask bits */
-+	struct fbcurpos hot;	/* cursor hot spot */
-+	struct fb_image	image;	/* Cursor image */
-+};
-+
-+/* Settings for the generic backlight code */
-+#define FB_BACKLIGHT_LEVELS	128
-+#define FB_BACKLIGHT_MAX	0xFF
-+
-+
-+#endif /* _LINUX_FB_H */
 diff --git mlibc-clean/sysdeps/fishos/include/mlibc/thread-entry.hpp mlibc-workdir/sysdeps/fishos/include/mlibc/thread-entry.hpp
 new file mode 100644
 index 00000000..2dd88a64
@@ -2393,10 +2179,17 @@ index 00000000..2d696e31
 +#endif // _SYS_SYSMACROS_H
 diff --git mlibc-clean/sysdeps/fishos/meson.build mlibc-workdir/sysdeps/fishos/meson.build
 new file mode 100644
-index 00000000..8083e43f
+index 00000000..1d1ead03
 --- /dev/null
 +++ mlibc-workdir/sysdeps/fishos/meson.build
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,133 @@
++sysdep_supported_options = {
++	'posix': true,
++	'linux': true,
++	'glibc': true,
++	'bsd': true,
++}
++
 +rtld_dso_sources += files(
 +	'generic/generic.cpp',
 +	'generic/filesystem.cpp',
@@ -2413,17 +2206,18 @@ index 00000000..8083e43f
 +
 +if not no_headers
 +	install_headers(
++		'include/abi-bits/access.h',
 +		'include/abi-bits/auxv.h',
 +		'include/abi-bits/seek-whence.h',
 +		'include/abi-bits/vm-flags.h',
 +		'include/abi-bits/errno.h',
 +		'include/abi-bits/fcntl.h',
 +		'include/abi-bits/in.h',
-+		'include/abi-bits/reboot.h',
-+		'include/abi-bits/resource.h',
 +		'include/abi-bits/stat.h',
 +		'include/abi-bits/statx.h',
 +		'include/abi-bits/signal.h',
++		'include/abi-bits/reboot.h',
++		'include/abi-bits/resource.h',
 +		'include/abi-bits/socket.h',
 +		'include/abi-bits/termios.h',
 +		'include/abi-bits/time.h',
@@ -2436,7 +2230,6 @@ index 00000000..8083e43f
 +		'include/abi-bits/nlink_t.h',
 +		'include/abi-bits/pid_t.h',
 +		'include/abi-bits/uid_t.h',
-+		'include/abi-bits/access.h',
 +		'include/abi-bits/wait.h',
 +		'include/abi-bits/limits.h',
 +		'include/abi-bits/utsname.h',
@@ -2446,6 +2239,7 @@ index 00000000..8083e43f
 +		'include/abi-bits/packet.h',
 +		'include/abi-bits/inotify.h',
 +		'include/abi-bits/clockid_t.h',
++		'include/abi-bits/ipc.h',
 +		'include/abi-bits/shm.h',
 +		'include/abi-bits/mqueue.h',
 +		'include/abi-bits/suseconds_t.h',
@@ -2457,19 +2251,15 @@ index 00000000..8083e43f
 +		'include/abi-bits/ioctls.h',
 +		'include/abi-bits/xattr.h',
 +		'include/abi-bits/msg.h',
++		'include/abi-bits/vt.h',
++		'include/abi-bits/random.h',
++		'include/abi-bits/rlim_t.h',
++		'include/abi-bits/sigval.h',
++		'include/abi-bits/sigevent.h',
++		'include/abi-bits/utmpx.h',
++		'include/abi-bits/utmp-defines.h',
 +		subdir: 'abi-bits',
 +		follow_symlinks: true
-+	)
-+
-+	install_headers(
-+		'include/asm/ioctl.h',
-+		'include/asm/ioctls.h',
-+		subdir: 'asm',
-+	)
-+
-+	install_headers(
-+		'include/linux/fb.h',
-+		subdir: 'linux',
 +	)
 +
 +	install_headers(
@@ -2490,75 +2280,88 @@ index 00000000..8083e43f
 +endif
 +
 +if not headers_only
-+	crt = custom_target('crt0',
++	crt = custom_target(
 +		build_by_default: true,
 +		command: c_compiler.cmd_array() + ['-c', '-o', '@OUTPUT@', '@INPUT@'],
-+		input: host_machine.cpu_family() / 'crt-src/crt0.S',
-+		output: 'crt0.o',
++		input: files('crt-' + host_machine.cpu_family() / 'crt1.S'),
++		output: 'crt1.o',
 +		install: true,
 +		install_dir: get_option('libdir')
 +	)
 +
-+	custom_target('crti',
++	crt_pie = custom_target(
 +		build_by_default: true,
 +		command: c_compiler.cmd_array() + ['-c', '-o', '@OUTPUT@', '@INPUT@'],
-+		input: host_machine.cpu_family() / 'crt-src/crti.S',
++		input: files('crt-' + host_machine.cpu_family() / 'Scrt1.S'),
++		output: 'Scrt1.o',
++		install: true,
++		install_dir: get_option('libdir')
++	)
++
++	custom_target(
++		build_by_default: true,
++		command: c_compiler.cmd_array() + ['-c', '-o', '@OUTPUT@', '@INPUT@'],
++		input: files('crt-' + host_machine.cpu_family() / 'crti.S'),
 +		output: 'crti.o',
 +		install: true,
 +		install_dir: get_option('libdir')
 +	)
 +
-+	custom_target('crtn',
++	custom_target(
 +		build_by_default: true,
 +		command: c_compiler.cmd_array() + ['-c', '-o', '@OUTPUT@', '@INPUT@'],
-+		input: host_machine.cpu_family() / 'crt-src/crtn.S',
++		input: files('crt-' + host_machine.cpu_family() / 'crtn.S'),
 +		output: 'crtn.o',
 +		install: true,
 +		install_dir: get_option('libdir')
 +	)
 +endif
-diff --git mlibc-clean/sysdeps/fishos/x86_64/crt-src/crt0.S mlibc-workdir/sysdeps/fishos/x86_64/crt-src/crt0.S
-new file mode 100644
-index 00000000..bdd75e87
---- /dev/null
-+++ mlibc-workdir/sysdeps/fishos/x86_64/crt-src/crt0.S
-@@ -0,0 +1,7 @@
-+.section .text
-+.global _start
-+_start:
-+	mov %rsp, %rdi
-+	lea main(%rip), %rsi
-+	call __mlibc_entry
-+.section .note.GNU-stack,"",%progbits
-diff --git mlibc-clean/sysdeps/fishos/x86_64/crt-src/crti.S mlibc-workdir/sysdeps/fishos/x86_64/crt-src/crti.S
-new file mode 100644
-index 00000000..911b078d
---- /dev/null
-+++ mlibc-workdir/sysdeps/fishos/x86_64/crt-src/crti.S
-@@ -0,0 +1,11 @@
-+.section .init
-+.global _init
-+_init:
-+	push %rax
+diff --git mlibc-clean/tests/ansi/sscanf.c mlibc-workdir/tests/ansi/sscanf.c
+index 48716617..512b45ec 100644
+--- mlibc-clean/tests/ansi/sscanf.c
++++ mlibc-workdir/tests/ansi/sscanf.c
+@@ -174,6 +174,44 @@ int main() {
+ 		assert(!strcmp(name, "SomeOption"));
+ 	}
+ 
++	{
++		// From openjdk
++#define RANGEBASE_ASCII "\x1\x2\x3\x4\x5\x6\x7\x8\xa\xb\xc\xd\xe\xf" \
++    "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f" \
++    "\x21\x22\x23\x24\x25\x26\x27\x2a\x2b\x2c\x2d" \
++    "\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f" \
++    "\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f" \
++    "\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a\x5c\x5e\x5f" \
++    "\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f" \
++    "\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c\x7d\x7e\x7f"
 +
-+.section .fini
-+.global _fini
-+_fini:
-+	push %rax
-+.section .note.GNU-stack,"",%progbits
++#define RANGEBASE_NON_ASCII "\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f" \
++    "\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f" \
++    "\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf" \
++    "\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf" \
++    "\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf" \
++    "\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf" \
++    "\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef"
 +
-diff --git mlibc-clean/sysdeps/fishos/x86_64/crt-src/crtn.S mlibc-workdir/sysdeps/fishos/x86_64/crt-src/crtn.S
-new file mode 100644
-index 00000000..0187e50f
---- /dev/null
-+++ mlibc-workdir/sysdeps/fishos/x86_64/crt-src/crtn.S
-@@ -0,0 +1,9 @@
-+.section .init
-+	pop %rax
-+	ret
++#define RANGEBASE RANGEBASE_ASCII RANGEBASE_NON_ASCII
 +
-+.section .fini
-+	pop %rax
-+	ret
-+.section .note.GNU-stack,"",%progbits
++#define RANGE0 "[*" RANGEBASE "]"
++#define RANGESLASH "[*" RANGEBASE "/]"
++		char buf[] = "* *";
++		char str1[256] = {0};
++		char str2[256] = {0};
 +
++		int bytes_read1 = 0;
++		sscanf(buf, "%*[ \t]%n", &bytes_read1);
++
++		int bytes_read2 = 0;
++		int ret = sscanf(buf, "%255" RANGESLASH "%*[ ]" "%255"  RANGE0 "%n", str1, str2, &bytes_read2);
++		assert(ret == 2);
++		assert(!strcmp(str1, "*"));
++		assert(!strcmp(str2, "*"));
++		assert(bytes_read2 == 3);
++	}
++
+ 	test_matrix();
+ 
+ #pragma GCC diagnostic push

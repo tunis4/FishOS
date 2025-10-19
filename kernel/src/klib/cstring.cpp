@@ -9,6 +9,12 @@ namespace klib {
         return len;
     }
 
+    usize strnlen(const char *str, usize maxlen) {
+        usize len = 0;
+        for (; len < maxlen && str[len] != '\0'; len++);
+        return len;
+    }
+
     char* strcpy(char *dst, const char *src) {
         return (char*)memcpy(dst, src, strlen(src) + 1);
     }

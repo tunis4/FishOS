@@ -1,17 +1,16 @@
 # FishOS
 
-operating system of the fish
+An unix-like operating system kernel for x86_64
 
-- written in c++
-- currently capable of running xorg, gcc, bash, coreutils, etc
-- uses mlibc and limine
-- ps/2 keyboard and mouse passed to userspace with linux evdev interface
-- nothing else impressive yet lol
+- Written entirely in C++
+- Capable of running a decent amount of ports including MATE desktop (partially) and mesa
+- Uses mlibc and limine bootloader
+- PS/2 input drivers with evdev interface
+- Basic UDP networking with virtio-net
+- Works on real hardware
 
 ![Screenshot](/screenshot.png?raw=true "Screenshot")
 
-### third party stuff
+### Thanks to
 
-most of the userspace recipes/patches were copied from [Vinix](https://github.com/vlang/vinix/)
-
-the terminal font (ter-u16n.psf, ter-u16b.psf) is [Terminus Font](https://terminus-font.sourceforge.net/)
+[Gloire](https://codeberg.org/Ironclad/Gloire) for most of the userspace ports

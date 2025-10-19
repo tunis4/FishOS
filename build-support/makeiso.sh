@@ -19,18 +19,20 @@ trap cleanup EXIT
 SYSROOT=$WORK_DIR/sysroot
 ISOROOT=$WORK_DIR/isoroot
 
+cd build
+
 # Build the sysroot with jinx and build limine.
-./jinx install $SYSROOT '*'
-./jinx host-build limine
+../jinx install $SYSROOT base
+../jinx host-build limine
 
 # Make an initramfs with the sysroot.
-( cd $SYSROOT && tar cf $WORK_DIR/initramfs.tar * )
+( cd $SYSROOT && tar --format=ustar -cf $WORK_DIR/initramfs.tar * )
 
 # Prepare the iso and boot directories.
 mkdir -pv $ISOROOT/boot
 cp $SYSROOT/usr/bin/fishos $ISOROOT/boot/
 cp $WORK_DIR/initramfs.tar $ISOROOT/boot/
-cp build-support/limine.conf $ISOROOT/boot/
+cp ../build-support/limine.conf $ISOROOT/boot/
 
 # Install the limine binaries.
 cp host-pkgs/limine/usr/local/share/limine/limine-bios.sys $ISOROOT/boot/

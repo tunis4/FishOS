@@ -34,7 +34,7 @@ namespace sched::timer::apic_timer {
         stop();
         previous_interval = µs;
 
-        u32 ticks = (µs * freq) / 1000000;
+        u32 ticks = (µs * freq) / 1'000'000;
         // LAPIC::set_vector(LAPIC::LVT_TIMER, vector, false, false, false, false);
         LAPIC::write_reg(LAPIC::TIMER_DIVIDE, 0b1011); // divide by 1
         LAPIC::write_reg(LAPIC::TIMER_INITIAL, ticks);
@@ -43,7 +43,7 @@ namespace sched::timer::apic_timer {
     u64 µs_since_interrupt() {
         u64 initial_ticks = LAPIC::read_reg(LAPIC::TIMER_INITIAL);
         u64 current_ticks = LAPIC::read_reg(LAPIC::TIMER_CURRENT);
-        return ((initial_ticks - current_ticks) * 1000000) / freq;
+        return ((initial_ticks - current_ticks) * 1'000'000) / freq;
     }
 
     void self_interrupt() {

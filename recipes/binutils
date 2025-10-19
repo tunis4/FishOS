@@ -1,20 +1,19 @@
+#! /bin/sh
+
 name=binutils
-version=2.43
+version=2.45
 revision=1
-tarball_url="https://ftp.gnu.org/gnu/binutils/binutils-${version}.tar.xz"
-tarball_blake2b="28b0a04a28273b76eab2d00e00160be889f155f77f5a9d8759ef8dce505c97e97641bf7ec70b92b731b520570a02b06e04e8215b068fcb1bb2573e9ef24732d9"
-source_hostdeps="autoconf-2.69 automake libtool pkg-config"
-imagedeps="gcc"
-hostdeps="gcc autoconf-2.69 automake libtool pkg-config"
+tarball_url="https://ftpmirror.gnu.org/gnu/binutils/binutils-${version}.tar.xz"
+tarball_blake2b="1ce72346b1f531c89feb86b407e2c649151b506ffbd1a02d413411d36f7ede98fa9a1adf75dd941c01df5fe7e6bf151828b269eeb7c278315ca8004bff22eb7f"
+imagedeps="build-essential"
+hostdeps="gcc pkg-config"
 deps="core-libs zlib zstd"
 
-regenerate() {
-    autotools_recursive_regen -I"$(realpath ./config)"
-
-    cp -pv /usr/local/share/libtool/build-aux/{config.sub,config.guess,install-sh} libiberty/
+prepare() {
+    autotools_recursive_regen
 }
 
-build() {
+configure() {
     autotools_configure \
         --target=${OS_TRIPLET} \
         --with-build-sysroot=${sysroot_dir} \
@@ -23,7 +22,6 @@ build() {
         --enable-colored-disassembly \
         --enable-default-execstack=no \
         --enable-deterministic-archives \
-        --enable-gold \
         --enable-ld=default \
         --enable-new-dtags \
         --enable-plugins \
@@ -32,7 +30,9 @@ build() {
         --disable-werror \
         --with-pic \
         --with-system-zlib
+}
 
+build() {
     make -j${parallelism}
 }
 

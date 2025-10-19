@@ -1,28 +1,30 @@
-name=gcc
-version=14.2.0
-revision=1
-tarball_url="https://ftp.gnu.org/gnu/gcc/gcc-${version}/gcc-${version}.tar.xz"
-tarball_blake2b="87baf2a06dfa75d8fb6cd62c747ef1f57d3b9bbbe33a360d9ed3de4b4dbeaa8d920504c67e409bd9863414202c14fd854b46108e984418171205119216d03d3b"
-source_hostdeps="automake autoconf-2.69 libtool pkg-config"
-source_imagedeps="git"
-hostdeps="gcc autoconf-2.69 automake libtool pkg-config"
-deps="core-libs binutils zlib gmp mpfr mpc gettext"
-imagedeps="gcc"
+#! /bin/sh
 
-regenerate() {
+name=gcc
+version=15.2.0
+revision=1
+tarball_url="https://ftpmirror.gnu.org/gnu/gcc/gcc-${version}/gcc-${version}.tar.xz"
+tarball_blake2b="e270320978ca690e6e8f5ef06414dc13caf561f16403a3783c76fbf3dcee57e755a2d5bba922bf7fcae0bb6120443755d819b003791ae823d54589dd799804de"
+hostdeps="gcc pkg-config"
+deps="core-libs binutils zlib gmp mpfr mpc gettext"
+imagedeps="build-essential"
+
+prepare() {
     for i in "${base_dir}"/patches/gcc-host/*; do
         patch -p1 < "$i"
     done
 
-    autotools_recursive_regen -I"$(realpath ./config)"
-
-    cp -pv /usr/local/share/libtool/build-aux/{config.sub,config.guess,install-sh} libiberty/
+    autotools_recursive_regen
 }
 
-build() {
-        CXXFLAGS_FOR_TARGET="$CXXFLAGS" \
-        CFLAGS_FOR_TARGET="$CFLAGS" \
+configure() {
     autotools_configure \
+        CFLAGS_FOR_BUILD="$HOST_CFLAGS" \
+        CXXFLAGS_FOR_BUILD="$HOST_CXXFLAGS" \
+        LDFLAGS_FOR_BUILD="$HOST_LDFLAGS" \
+        CFLAGS_FOR_TARGET="$TARGET_CFLAGS" \
+        CXXFLAGS_FOR_TARGET="$TARGET_CXXFLAGS" \
+        LDFLAGS_FOR_TARGET="$TARGET_LDFLAGS" \
         --target=${OS_TRIPLET} \
         --with-sysroot=/ \
         --with-build-sysroot=${sysroot_dir} \
@@ -35,7 +37,9 @@ build() {
         --disable-multilib \
         --with-system-zlib \
         --enable-host-shared
+}
 
+build() {
     make -j${parallelism} all-gcc
 }
 
@@ -43,6 +47,11 @@ package() {
     DESTDIR="${dest_dir}" make install-gcc
 
     ln -s gcc "${dest_dir}${prefix}"/bin/cc
+    cp -v "${base_dir}"/build-support/gcc/c89 "${dest_dir}${prefix}"/bin/
+    cp -v "${base_dir}"/build-support/gcc/c99 "${dest_dir}${prefix}"/bin/
+    chmod +x "${dest_dir}${prefix}"/bin/c89
+    chmod +x "${dest_dir}${prefix}"/bin/c99
+
     # Remove static libraries
     rm -rf "${dest_dir}${prefix}"/lib/*.a
 

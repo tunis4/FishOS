@@ -34,7 +34,7 @@ namespace dev::input {
         while (event_buffer.is_empty()) {
             if (!blocking)
                 return -EWOULDBLOCK;
-            if (device->event.await() == -EINTR)
+            if (device->event.wait() == -EINTR)
                 return -EINTR;
         }
         return event_buffer.read(buf, count);

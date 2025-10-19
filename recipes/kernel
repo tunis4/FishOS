@@ -1,18 +1,26 @@
+#! /bin/sh
+
 name=kernel
-version=0.0
+skip_pkg_check=yes
+version=0.1
 revision=1
 source_dir="kernel"
-imagedeps="meson ninja nasm"
 source_allow_network="yes"
-hostdeps="gcc"
+imagedeps="build-essential nasm"
+hostdeps="gcc pkg-config"
 deps="core-libs"
 
-build() {
-    meson_configure
+configure() {
+    meson_configure_noflags \
+        -Doptimization=0 \
+        -Db_sanitize=undefined
+        # -Db_lto=true
+}
 
-    ninja -j${parallelism}
+build() {
+    meson compile -j${parallelism}
 }
 
 package() {
-    DESTDIR="${dest_dir}" ninja install
+    DESTDIR="${dest_dir}" meson install --no-rebuild
 }

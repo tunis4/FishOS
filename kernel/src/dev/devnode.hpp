@@ -1,6 +1,6 @@
 #pragma once
 
-#include <dev/device.hpp>
+#include <dev/block.hpp>
 #include <fs/vfs.hpp>
 #include <klib/functional.hpp>
 #include <fcntl.h>
@@ -11,6 +11,8 @@ namespace dev {
 
         DevNode() {}
         virtual ~DevNode() {}
+
+        isize mmap(vfs::FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) override { return -EACCES; }
     };
 
     template<typename T>
@@ -26,11 +28,11 @@ namespace dev {
     struct CharDevNode : public DevNode {
         using NodeInitializer = DevNodeInitializer<CharDevNode>;
 
-        static void register_node_initializer(dev_t dev_id, const char *name, klib::Function<CharDevNode*()> &&create);
+        static void register_node_initializer(uint major, uint minor, const char *name, klib::Function<CharDevNode*()> &&create);
         static CharDevNode* create_node(dev_t dev_id);
 
         CharDevNode() {
-            type = vfs::NodeType::CHAR_DEVICE;
+            node_type = vfs::NodeType::CHAR_DEVICE;
         }
 
         virtual ~CharDevNode() {}
@@ -56,19 +58,30 @@ namespace dev {
     struct BlockDevNode : public DevNode {
         using NodeInitializer = DevNodeInitializer<BlockDevNode>;
 
-        static void register_node_initializer(dev_t dev_id, const char *name, klib::Function<BlockDevNode*()> &&create);
+        static void register_node_initializer(uint major, uint minor, const char *name, klib::Function<BlockDevNode*()> &&create);
         static BlockDevNode* create_node(dev_t dev_id);
 
         BlockInterface *block_device;
 
         BlockDevNode(BlockInterface *block_device) : block_device(block_device) {
-            type = vfs::NodeType::BLOCK_DEVICE;
+            node_type = vfs::NodeType::BLOCK_DEVICE;
         }
 
         virtual ~BlockDevNode() {}
 
         isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
         isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override;
+
+        isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override {
+            switch (whence) {
+            case SEEK_SET:
+                return offset;
+            case SEEK_CUR:
+                return position + offset;
+            default:
+                return -EINVAL;
+            }
+        }
     };
 
     void init_devices();

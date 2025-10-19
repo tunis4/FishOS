@@ -14,6 +14,7 @@ extern "C" void* memset(void *dst, u8 value, usize size);
 
 namespace klib {
     usize strlen(const char *str);
+    usize strnlen(const char *str, usize maxlen);
     char* strcpy(char *dst, const char *src);
     char* strncpy(char *dst, const char *src, usize n);
     char* strdup(const char *src);

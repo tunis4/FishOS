@@ -1,0 +1,395 @@
+diff --color -urN --no-dereference openjdk17-clean/make/autoconf/platform.m4 openjdk17-workdir/make/autoconf/platform.m4
+--- openjdk17-clean/make/autoconf/platform.m4	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/make/autoconf/platform.m4	2025-09-09 16:07:46.000000000 +0300
+@@ -220,6 +220,10 @@
+       VAR_OS=aix
+       VAR_OS_TYPE=unix
+       ;;
++    *fishos*)
++      VAR_OS=linux
++      VAR_OS_TYPE=unix
++      ;;
+     *)
+       AC_MSG_ERROR([unsupported operating system $1])
+       ;;
+diff --color -urN --no-dereference openjdk17-clean/make/modules/java.desktop/lib/Awt2dLibraries.gmk openjdk17-workdir/make/modules/java.desktop/lib/Awt2dLibraries.gmk
+--- openjdk17-clean/make/modules/java.desktop/lib/Awt2dLibraries.gmk	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/make/modules/java.desktop/lib/Awt2dLibraries.gmk	2025-09-09 16:07:46.000000000 +0300
+@@ -786,6 +786,7 @@
+       LIBS := $(JDKLIB_LIBS) $(LIBSPLASHSCREEN_LIBS) $(LIBZ_LIBS) \
+           $(GIFLIB_LIBS) $(LIBJPEG_LIBS) $(PNG_LIBS), \
+       LIBS_aix := -liconv, \
++      LIBS_linux := -liconv, \
+   ))
+ 
+   TARGETS += $(BUILD_LIBSPLASHSCREEN)
+diff --color -urN --no-dereference openjdk17-clean/make/modules/java.instrument/Lib.gmk openjdk17-workdir/make/modules/java.instrument/Lib.gmk
+--- openjdk17-clean/make/modules/java.instrument/Lib.gmk	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/make/modules/java.instrument/Lib.gmk	2025-09-09 16:07:46.000000000 +0300
+@@ -49,7 +49,7 @@
+     LDFLAGS_aix := -L$(SUPPORT_OUTPUTDIR)/native/java.base, \
+     LIBS := $(JDKLIB_LIBS), \
+     LIBS_unix := -ljava -ljvm $(LIBZ_LIBS), \
+-    LIBS_linux := -ljli $(LIBDL), \
++    LIBS_linux := -ljli -liconv $(LIBDL), \
+     LIBS_aix := -liconv -ljli_static $(LIBDL), \
+     LIBS_macosx := -ljli -liconv -framework Cocoa -framework Security \
+         -framework ApplicationServices, \
+diff --color -urN --no-dereference openjdk17-clean/make/modules/jdk.jdwp.agent/Lib.gmk openjdk17-workdir/make/modules/jdk.jdwp.agent/Lib.gmk
+--- openjdk17-clean/make/modules/jdk.jdwp.agent/Lib.gmk	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/make/modules/jdk.jdwp.agent/Lib.gmk	2025-09-09 16:07:46.000000000 +0300
+@@ -62,7 +62,7 @@
+     LDFLAGS := $(LDFLAGS_JDKLIB) \
+         $(call SET_SHARED_LIBRARY_ORIGIN), \
+     LIBS := $(JDKLIB_LIBS), \
+-    LIBS_linux := $(LIBDL), \
++    LIBS_linux := -liconv $(LIBDL), \
+     LIBS_macosx := -liconv, \
+     LIBS_aix := -liconv, \
+ ))
+diff --color -urN --no-dereference openjdk17-clean/src/hotspot/os/linux/gc/z/zSyscall_linux.cpp openjdk17-workdir/src/hotspot/os/linux/gc/z/zSyscall_linux.cpp
+--- openjdk17-clean/src/hotspot/os/linux/gc/z/zSyscall_linux.cpp	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/hotspot/os/linux/gc/z/zSyscall_linux.cpp	2025-09-09 16:07:46.000000000 +0300
+@@ -27,14 +27,31 @@
+ 
+ #include <unistd.h>
+ 
++#ifdef __fishos__
++#include <sys/mman.h>
++#include <fcntl.h>
++#endif
++
+ int ZSyscall::memfd_create(const char *name, unsigned int flags) {
++#ifdef __fishos__
++  return ::memfd_create(name, flags);
++#else
+   return syscall(SYS_memfd_create, name, flags);
++#endif
+ }
+ 
+ int ZSyscall::fallocate(int fd, int mode, size_t offset, size_t length) {
++#ifdef __fishos__
++  return ::fallocate(fd, mode, offset, length);
++#else
+   return syscall(SYS_fallocate, fd, mode, offset, length);
++#endif
+ }
+ 
+ long ZSyscall::get_mempolicy(int* mode, unsigned long* nodemask, unsigned long maxnode, void* addr, unsigned long flags) {
++#ifdef __fishos__
++  return 0;
++#else
+   return syscall(SYS_get_mempolicy, mode, nodemask, maxnode, addr, flags);
++#endif
+ }
+diff --color -urN --no-dereference openjdk17-clean/src/hotspot/os/linux/os_linux.cpp openjdk17-workdir/src/hotspot/os/linux/os_linux.cpp
+--- openjdk17-clean/src/hotspot/os/linux/os_linux.cpp	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/hotspot/os/linux/os_linux.cpp	2025-09-09 16:07:46.000000000 +0300
+@@ -100,7 +100,11 @@
+ # include <poll.h>
+ # include <fcntl.h>
+ # include <string.h>
++
++#ifndef __fishos__
+ # include <syscall.h>
++#endif
++
+ # include <sys/sysinfo.h>
+ # include <sys/ipc.h>
+ # include <sys/shm.h>
+@@ -345,9 +349,13 @@
+ // Returns the kernel thread id of the currently running thread. Kernel
+ // thread id is used to access /proc.
+ pid_t os::Linux::gettid() {
++#ifdef __fishos__
++  return ::gettid();
++#else
+   int rslt = syscall(SYS_gettid);
+   assert(rslt != -1, "must be."); // old linuxthreads implementation?
+   return (pid_t)rslt;
++#endif
+ }
+ 
+ // Returns the amount of swap currently configured, in bytes.
+diff --color -urN --no-dereference openjdk17-clean/src/hotspot/os/linux/waitBarrier_linux.cpp openjdk17-workdir/src/hotspot/os/linux/waitBarrier_linux.cpp
+--- openjdk17-clean/src/hotspot/os/linux/waitBarrier_linux.cpp	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/hotspot/os/linux/waitBarrier_linux.cpp	2025-09-09 16:07:46.000000000 +0300
+@@ -26,7 +26,13 @@
+ #include "runtime/orderAccess.hpp"
+ #include "runtime/os.hpp"
+ #include "waitBarrier_linux.hpp"
++
++#ifdef __fishos__
++#include <fishos/syscall.h>
++#else
+ #include <sys/syscall.h>
++#endif
++
+ #include <linux/futex.h>
+ 
+ #define check_with_errno(check_type, cond, msg)                             \
+@@ -39,7 +45,16 @@
+ #define guarantee_with_errno(cond, msg) check_with_errno(guarantee, cond, msg)
+ 
+ static int futex(volatile int *addr, int futex_op, int op_arg) {
++#ifdef __fishos__
++  int64_t ret = syscall(SYS_futex, (uint64_t)addr, futex_op, op_arg, NULL, NULL, 0);
++	if (ret < 0) {
++    errno = -ret;
++		return -1;
++  }
++	return ret;
++#else
+   return syscall(SYS_futex, addr, futex_op, op_arg, NULL, NULL, 0);
++#endif
+ }
+ 
+ void LinuxWaitBarrier::arm(int barrier_tag) {
+diff --color -urN --no-dereference openjdk17-clean/src/hotspot/os/posix/vmError_posix.cpp openjdk17-workdir/src/hotspot/os/posix/vmError_posix.cpp
+--- openjdk17-clean/src/hotspot/os/posix/vmError_posix.cpp	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/hotspot/os/posix/vmError_posix.cpp	2025-09-09 16:07:46.000000000 +0300
+@@ -35,7 +35,7 @@
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ 
+-#ifdef LINUX
++#if defined(LINUX) && !defined(__fishos__)
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ #endif
+@@ -46,7 +46,9 @@
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ #endif
+-
++#ifdef __fishos__
++#include <unistd.h>
++#endif
+ 
+ // Needed for cancelable steps.
+ static volatile pthread_t reporter_thread_id;
+diff --color -urN --no-dereference openjdk17-clean/src/hotspot/os_cpu/linux_x86/gc/z/zSyscall_linux_x86.hpp openjdk17-workdir/src/hotspot/os_cpu/linux_x86/gc/z/zSyscall_linux_x86.hpp
+--- openjdk17-clean/src/hotspot/os_cpu/linux_x86/gc/z/zSyscall_linux_x86.hpp	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/hotspot/os_cpu/linux_x86/gc/z/zSyscall_linux_x86.hpp	2025-09-09 16:07:46.000000000 +0300
+@@ -24,7 +24,9 @@
+ #ifndef OS_CPU_LINUX_X86_GC_Z_ZSYSCALL_LINUX_X86_HPP
+ #define OS_CPU_LINUX_X86_GC_Z_ZSYSCALL_LINUX_X86_HPP
+ 
++#ifndef __fishos__
+ #include <sys/syscall.h>
++#endif
+ 
+ //
+ // Support for building on older Linux systems
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/linux/classes/sun/nio/ch/DefaultSelectorProvider.java openjdk17-workdir/src/java.base/linux/classes/sun/nio/ch/DefaultSelectorProvider.java
+--- openjdk17-clean/src/java.base/linux/classes/sun/nio/ch/DefaultSelectorProvider.java	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/linux/classes/sun/nio/ch/DefaultSelectorProvider.java	2025-09-09 16:07:46.000000000 +0300
+@@ -36,7 +36,7 @@
+ public class DefaultSelectorProvider {
+     private static final SelectorProviderImpl INSTANCE;
+     static {
+-        PrivilegedAction<SelectorProviderImpl> pa = EPollSelectorProvider::new;
++        PrivilegedAction<SelectorProviderImpl> pa = PollSelectorProvider::new;
+         INSTANCE = AccessController.doPrivileged(pa);
+     }
+ 
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/share/native/libjli/jli_util.h openjdk17-workdir/src/java.base/share/native/libjli/jli_util.h
+--- openjdk17-clean/src/java.base/share/native/libjli/jli_util.h	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/share/native/libjli/jli_util.h	2025-09-09 16:07:46.000000000 +0300
+@@ -111,6 +111,9 @@
+ #define JLI_Lseek                       lseek
+ #endif
+ #endif /* _WIN32 */
++#ifdef __fishos__
++#define JLI_Lseek                       lseek
++#endif
+ 
+ /*
+  * Make launcher spit debug output.
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/jspawnhelper/jspawnhelper.c openjdk17-workdir/src/java.base/unix/native/jspawnhelper/jspawnhelper.c
+--- openjdk17-clean/src/java.base/unix/native/jspawnhelper/jspawnhelper.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/jspawnhelper/jspawnhelper.c	2025-09-09 16:07:46.000000000 +0300
+@@ -35,8 +35,6 @@
+ 
+ #include "childproc.h"
+ 
+-extern int errno;
+-
+ #define ALLOC(X,Y) { \
+     void *mptr; \
+     mptr = malloc (Y); \
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libjava/io_util_md.c openjdk17-workdir/src/java.base/unix/native/libjava/io_util_md.c
+--- openjdk17-clean/src/java.base/unix/native/libjava/io_util_md.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libjava/io_util_md.c	2025-09-09 16:07:46.000000000 +0300
+@@ -30,7 +30,7 @@
+ #include <string.h>
+ #include <unistd.h>
+ 
+-#if defined(__linux__) || defined(_ALLBSD_SOURCE) || defined(_AIX)
++#if defined(__linux__) || defined(_ALLBSD_SOURCE) || defined(_AIX) || defined(__fishos__)
+ #include <sys/ioctl.h>
+ #endif
+ 
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libjava/jni_util_md.c openjdk17-workdir/src/java.base/unix/native/libjava/jni_util_md.c
+--- openjdk17-clean/src/java.base/unix/native/libjava/jni_util_md.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libjava/jni_util_md.c	2025-09-09 16:07:46.000000000 +0300
+@@ -31,7 +31,7 @@
+ #include "jni_util.h"
+ #include "dlfcn.h"
+ 
+-#if defined(LINUX) && (defined(_GNU_SOURCE) || \
++#if defined(__linux__) && (defined(_GNU_SOURCE) || \
+          (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE < 200112L \
+              && defined(_XOPEN_SOURCE) && _XOPEN_SOURCE < 600))
+ extern int __xpg_strerror_r(int, char *, size_t);
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libjava/ProcessHandleImpl_unix.c openjdk17-workdir/src/java.base/unix/native/libjava/ProcessHandleImpl_unix.c
+--- openjdk17-clean/src/java.base/unix/native/libjava/ProcessHandleImpl_unix.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libjava/ProcessHandleImpl_unix.c	2025-09-09 16:07:46.000000000 +0300
+@@ -485,10 +485,10 @@
+ }
+ 
+ /*
+- * The following functions are common on Solaris, Linux and AIX.
++ * The following functions are common on Solaris, Linux, AIX and FishOS.
+  */
+ 
+-#if defined (__linux__) || defined(_AIX)
++#if defined (__linux__) || defined(_AIX) || defined(__fishos__)
+ 
+ /*
+  * Returns the children of the requested pid and optionally each parent and
+@@ -607,7 +607,7 @@
+     return count;
+ }
+ 
+-#endif // defined (__linux__) || defined(_AIX)
++#endif // defined (__linux__) || defined(_AIX) || defined(__fishos__)
+ 
+ /*
+  * The following functions are for AIX.
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libjava/TimeZone_md.c openjdk17-workdir/src/java.base/unix/native/libjava/TimeZone_md.c
+--- openjdk17-clean/src/java.base/unix/native/libjava/TimeZone_md.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libjava/TimeZone_md.c	2025-09-09 16:07:46.000000000 +0300
+@@ -59,7 +59,7 @@
+ #define fstat64 fstat
+ #endif
+ 
+-#if defined(__linux__) || defined(_ALLBSD_SOURCE)
++#if defined(__linux__) || defined(_ALLBSD_SOURCE) || defined(__fishos__)
+ static const char *ETC_TIMEZONE_FILE = "/etc/timezone";
+ static const char *ZONEINFO_DIR = "/usr/share/zoneinfo";
+ static const char *DEFAULT_ZONEINFO_FILE = "/etc/localtime";
+@@ -75,7 +75,7 @@
+ static const char *ETC_ENVIRONMENT_FILE = "/etc/environment";
+ #endif
+ 
+-#if defined(__linux__) || defined(MACOSX)
++#if defined(__linux__) || defined(MACOSX) || defined(__fishos__)
+ 
+ /*
+  * Returns a pointer to the zone ID portion of the given zoneinfo file
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libnet/Inet6AddressImpl.c openjdk17-workdir/src/java.base/unix/native/libnet/Inet6AddressImpl.c
+--- openjdk17-clean/src/java.base/unix/native/libnet/Inet6AddressImpl.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libnet/Inet6AddressImpl.c	2025-09-09 16:07:46.000000000 +0300
+@@ -29,6 +29,7 @@
+ #include <sys/time.h>
+ #include <sys/types.h>
+ #include <netinet/in.h>
++#include <netinet/ip.h>
+ #include <netinet/icmp6.h>
+ 
+ #if defined(_ALLBSD_SOURCE)
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libnet/net_util_md.h openjdk17-workdir/src/java.base/unix/native/libnet/net_util_md.h
+--- openjdk17-clean/src/java.base/unix/native/libnet/net_util_md.h	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libnet/net_util_md.h	2025-09-09 16:07:46.000000000 +0300
+@@ -29,6 +29,7 @@
+ #include <netdb.h>
+ #include <poll.h>
+ #include <sys/socket.h>
++#include <netinet/in.h>
+ 
+ /************************************************************************
+  * Macros and constants
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libnet/NetworkInterface.c openjdk17-workdir/src/java.base/unix/native/libnet/NetworkInterface.c
+--- openjdk17-clean/src/java.base/unix/native/libnet/NetworkInterface.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libnet/NetworkInterface.c	2025-09-09 16:07:46.000000000 +0300
+@@ -47,7 +47,7 @@
+ 
+ #include "java_net_InetAddress.h"
+ 
+-#if defined(__linux__)
++#if defined(__linux__) || defined(__fishos__)
+     #define _PATH_PROCNET_IFINET6 "/proc/net/if_inet6"
+ #endif
+ 
+@@ -1144,7 +1144,7 @@
+ }
+ 
+ /** Linux **/
+-#if defined(__linux__)
++#if defined(__linux__) || defined(__fishos__)
+ 
+ /*
+  * Opens a socket for further ioctl calls. Tries AF_INET socket first and
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libnio/ch/FileChannelImpl.c openjdk17-workdir/src/java.base/unix/native/libnio/ch/FileChannelImpl.c
+--- openjdk17-clean/src/java.base/unix/native/libnio/ch/FileChannelImpl.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libnio/ch/FileChannelImpl.c	2025-09-09 16:07:46.000000000 +0300
+@@ -29,7 +29,7 @@
+ #include <sys/types.h>
+ #include <unistd.h>
+ 
+-#if defined(__linux__)
++#if defined(__linux__) || defined(__fishos__)
+ #include <sys/sendfile.h>
+ #elif defined(_AIX)
+ #include <string.h>
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libnio/ch/FileDispatcherImpl.c openjdk17-workdir/src/java.base/unix/native/libnio/ch/FileDispatcherImpl.c
+--- openjdk17-clean/src/java.base/unix/native/libnio/ch/FileDispatcherImpl.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libnio/ch/FileDispatcherImpl.c	2025-09-09 16:07:46.000000000 +0300
+@@ -40,6 +40,10 @@
+ #include <sys/ioctl.h>
+ #endif
+ 
++#ifdef __fishos__
++#include <sys/ioctl.h>
++#endif
++
+ #if defined(_ALLBSD_SOURCE)
+ #define lseek64 lseek
+ #define stat64 stat
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libnio/ch/NativeThread.c openjdk17-workdir/src/java.base/unix/native/libnio/ch/NativeThread.c
+--- openjdk17-clean/src/java.base/unix/native/libnio/ch/NativeThread.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libnio/ch/NativeThread.c	2025-09-09 16:07:46.000000000 +0300
+@@ -34,7 +34,7 @@
+ #include <signal.h>
+ #include <pthread.h>
+ 
+-#ifdef __linux__
++#if defined(__linux__) || defined(__fishos__)
+   /* Also defined in net/linux_close.c */
+   #define INTERRUPT_SIGNAL (SIGRTMAX - 2)
+ #elif defined(_AIX)
+diff --color -urN --no-dereference openjdk17-clean/src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c openjdk17-workdir/src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c
+--- openjdk17-clean/src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c	2025-09-09 16:07:46.000000000 +0300
+@@ -41,7 +41,7 @@
+ #endif
+ #include <sys/time.h>
+ 
+-#if defined(__linux__) || defined(_ALLBSD_SOURCE)
++#if defined(__linux__) || defined(_ALLBSD_SOURCE) || defined(__fishos__)
+ #include <sys/xattr.h>
+ #endif
+ 
+diff --color -urN --no-dereference openjdk17-clean/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c openjdk17-workdir/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c
+--- openjdk17-clean/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c	2025-09-09 16:07:46.000000000 +0300
++++ openjdk17-workdir/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c	2025-09-14 17:30:57.725423148 +0300
+@@ -63,7 +63,7 @@
+ 
+ static jlong page_size = 0;
+ 
+-#if defined(_ALLBSD_SOURCE) || defined(_AIX)
++#if defined(_ALLBSD_SOURCE) || defined(_AIX) || defined(__fishos__)
+ #define MB      (1024UL * 1024UL)
+ #else
+ 

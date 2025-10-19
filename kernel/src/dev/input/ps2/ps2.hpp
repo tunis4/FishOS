@@ -28,6 +28,8 @@ namespace dev::input::ps2 {
         void process_button(usize index, bool state);
     };
 
+    constexpr int TIMEOUT = 500'000; // in microseconds
+
     constexpr u16 PORT_DATA = 0x60;
     constexpr u16 PORT_COMMAND = 0x64;
     constexpr u16 PORT_STATUS = 0x64;
@@ -68,9 +70,9 @@ namespace dev::input::ps2 {
     bool out_buffer_empty();
     bool in_buffer_full();
     void flush_out_buffer();
-    void write_command(u8 cmd);
-    void write_data(u8 data);
-    u8 read_data();
+    int write_command(u8 cmd);
+    int write_data(u8 data);
+    int read_data();
     void device_command(int port, u8 command);
     bool device_command_check(int port, u8 command);
     bool identify(int port, u8 *result);

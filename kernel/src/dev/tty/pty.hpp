@@ -11,6 +11,7 @@ namespace dev::tty {
         klib::RingBuffer<char, 0x1000> ring_buffer;
         int pts_num;
         bool slave;
+        bool packet_mode = false;
 
         PseudoTerminalEnd(Terminal *terminal, bool slave);
         virtual ~PseudoTerminalEnd() {}

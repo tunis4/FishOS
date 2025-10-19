@@ -13,8 +13,8 @@ namespace cpu::interrupts {
 
     void LAPIC::prepare() {
         uptr phy_base = MSR::read(MSR::IA32_APIC_BASE) & ~(u64)0xFFF;
-        reg_base = phy_base + vmm::hhdm;
-        vmm::kernel_pagemap.map_page(phy_base, reg_base, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_CACHE_DISABLE);
+        reg_base = phy_base + mem::hhdm;
+        mem::vmm->kernel_pagemap.map_page(phy_base, reg_base, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_CACHE_DISABLE);
     }
 
     void LAPIC::enable() {
@@ -58,7 +58,7 @@ namespace cpu::interrupts {
     }
 
     IOAPIC::IOAPIC(usize id, uptr addr, usize gsi_base) : id(id), gsi_base(gsi_base) {
-        uptr hhdm = vmm::hhdm;
+        uptr hhdm = mem::hhdm;
         ioregsel = (volatile u32*)(addr + hhdm);
         ioregwin = (volatile u32*)(addr + 0x10 + hhdm);
         max_entries = (read_reg(1) >> 16) + 1;

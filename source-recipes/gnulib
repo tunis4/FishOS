@@ -1,4 +1,6 @@
+#! /bin/sh
+
 name=gnulib
-version=f263249382a5f1e03e16be6eacbbe23d49d49ab1
-tarball_url="https://git.savannah.gnu.org/cgit/gnulib.git/snapshot/gnulib-${version}.tar.gz"
-tarball_blake2b="53fcffb8d64eb9e721ef0b7c1f1c7092201b54aa992409d4eb4d389534a3fdb811e03cf7406e28dcd7fbed06a855a95451cda649a61cc3d447e2e3f1752204c9"
+version=1.0
+tarball_url="https://github.com/coreutils/gnulib/archive/refs/tags/v${version}.tar.gz"
+tarball_blake2b="e591ca22fe6977456c598f1e4fa24dfcafd46b698d6b366e9d191723fb711cf063c00eb3c246196b9a4f7128d96063290b7b9f4bf65abbe80f426f130fbbf2ad"

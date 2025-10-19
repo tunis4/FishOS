@@ -7,7 +7,7 @@
 #include <errno.h>
 
 namespace elf {
-    isize load(vmm::Pagemap *pagemap, vfs::VNode *file, uptr load_base, char **ld_path, Auxval *auxv, uptr *first_free_virt) {
+    isize load(mem::Pagemap *pagemap, vfs::VNode *file, uptr load_base, char **ld_path, Auxval *auxv, uptr *first_free_virt) {
         ASSERT(auxv);
         ASSERT(first_free_virt);
 
@@ -19,6 +19,9 @@ namespace elf {
 
         if (header.identifier[EI_CLASS] != ELFCLASS64 || header.identifier[EI_DATA] != ELFDATA2LSB || header.identifier[EI_OSABI] != ELFOSABI_SYSV || header.arch != EM_X86_64)
             return -ENOEXEC;
+
+        if (header.type == ET_EXEC)
+            load_base = 0;
 
         for (usize i = 0; i < header.ph_count; i++) {
             ProgramHeader ph {};
@@ -42,7 +45,7 @@ namespace elf {
                 uptr aligned_base = klib::align_down(base, 0x1000);
 
                 // klib::printf("mapping %#lX length %#lX\n", aligned_base, mem_page_count * 0x1000);
-                pagemap->map_range(aligned_base, mem_page_count * 0x1000, page_flags, vmm::MappedRange::Type::ANONYMOUS);
+                pagemap->map_anonymous(aligned_base, mem_page_count * 0x1000, page_flags);
 
                 for (usize i = 0; i < mem_page_count; i++) {
                     uptr page_virt = base + (i * 0x1000);

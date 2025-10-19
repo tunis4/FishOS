@@ -1,0 +1,27 @@
+#! /bin/sh
+
+name=spirv-tools
+version=1.4.321.0
+revision=1
+tarball_url="https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/vulkan-sdk-${version}.tar.gz"
+tarball_blake2b="a7a5d9c8ccd8c224ceb4199fe03eb393cf0b931a8b060d825fc91fecc43f5444e63e8f8ea5d00589acda5981b8a8a51b53bc054f590a133bba20a607b303f7cf"
+hostdeps="gcc pkg-config"
+deps="core-libs spirv-headers"
+
+configure() {
+    cmake_configure \
+        -DCMAKE_SKIP_RPATH=TRUE \
+        -DSPIRV-Headers_SOURCE_DIR="${sysroot_dir}/usr" \
+        -DSPIRV_TOOLS_BUILD_STATIC=OFF \
+        -DSPIRV_WERROR=OFF
+}
+
+build() {
+    cmake --build . -j${parallelism}
+}
+
+package() {
+    DESTDIR="${dest_dir}" cmake --install .
+
+    post_package_strip
+}

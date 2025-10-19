@@ -7,6 +7,7 @@ namespace tmpfs {
         isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
         isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override;
         isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override;
+        isize mmap(vfs::FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) override;
     };
 
     struct NodeData {

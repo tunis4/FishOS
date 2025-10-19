@@ -84,24 +84,28 @@ namespace cpu::interrupts {
         const char *err_name = vec < 31 ? exception_strings[vec] : "Not an exception";
         if ((state->cs & 3) == 3) {
             sched::Thread *thread = cpu::get_current_thread();
-            klib::printf("Thread crashed due to %s (%#X) (tid: %d, process name: \"%s\")\n", err_name, vec, thread->tid, thread->process->name);
-            if (state->err) klib::printf("Error code: %#04lX\n", state->err);
-            if (vec == 0xE) klib::printf("CR2=%016lX\n", cpu::read_cr2());
-            if (vec == 0x13) klib::printf("MXCSR=%08X\n", cpu::read_mxcsr());
-            klib::printf("RIP=%016lX RFLAGS=%016lX\n", state->rip, state->rflags);
-            klib::printf("FS=%016lX GS=%016lX KERNEL_GS=%016lX\n", cpu::read_fs_base(), cpu::read_gs_base(), cpu::read_kernel_gs_base());
-            // auto *task = cpu::get_current_thread();
-            // klib::printf("\nUser task (tid: %u) crashed (%s)\n", task->tid, err_name);
-            klib::printf("\nStacktrace:\n");
-            StackFrame *frame = (StackFrame*)state->rbp;
-            while (true) {
-                if (frame == nullptr || frame->ip == 0)
-                    break;
-                
-                klib::printf("%#lX\n", frame->ip);
-                frame = frame->next;
-            }
-            sched::terminate_self();
+
+            int signal = SIGSEGV;
+            if (vec == 0 || vec == 19) signal = SIGFPE;
+            else if (vec == 6) signal = SIGILL;
+            else if (vec == 13) signal = SIGBUS;
+
+            thread->send_signal(signal);
+            
+            memcpy(&thread->gpr_state, state, sizeof(cpu::InterruptState));
+            if (thread->extended_state)
+                cpu::save_extended_state(thread->extended_state);
+            thread->gs_base = cpu::read_kernel_gs_base();
+            thread->fs_base = cpu::read_fs_base();
+            thread->saved_user_stack = cpu::get_current_cpu()->user_stack;
+            thread->saved_kernel_stack = cpu::get_current_cpu()->kernel_stack;
+
+            thread->entering_signal = true;
+            userland::dispatch_pending_signal(thread);
+            memcpy(state, &thread->gpr_state, sizeof(cpu::InterruptState));
+            if (thread->extended_state)
+                cpu::restore_extended_state(thread->extended_state);
+            return;
         }
         klib::printf("\nCPU Exception: %s (%#X)\n", err_name, vec);
         if (state->err) klib::printf("Error code: %#04lX\n", state->err);
@@ -128,7 +132,7 @@ namespace cpu::interrupts {
 
     static void page_fault_handler(void *priv, InterruptState *state) {
         u64 cr2 = cpu::read_cr2();
-        if (vmm::active_pagemap->handle_page_fault(cr2) < 0)
+        if (mem::vmm->active_pagemap->handle_page_fault(cr2) < 0)
             exception_handler(priv, state);
     }
 

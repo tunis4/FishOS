@@ -17,8 +17,8 @@ namespace klib {
             while (__atomic_test_and_set(&this->locked, __ATOMIC_ACQUIRE)) {
 #if DETECT_DEADLOCK
                 i++;
-                if (i == 100000000)
-                    panic("Spinlock spun too much");
+                if (i >= 100000000)
+                    panic("Deadlock detected");
 #endif
                 asm volatile("pause");
             }
