@@ -46,6 +46,8 @@ namespace dev::tty {
         } return 0;
         case TIOCSWINSZ: {
             memcpy(&winsize, arg, sizeof(struct winsize));
+            if (foreground_process_group)
+                foreground_process_group->send_signal(SIGWINCH);
         } return 0;
         case TCGETS: {
             memcpy(arg, &termios, sizeof(struct termios));
