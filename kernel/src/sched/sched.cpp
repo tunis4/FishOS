@@ -97,6 +97,7 @@ namespace sched {
         clear_listeners();
         if (extended_state)
             klib::free(extended_state);
+        procfs_dir->remove();
     }
 
     Process::Process() :
@@ -565,6 +566,7 @@ namespace sched {
         ASSERT(ret >= 0);
 
         procfs::create_process_dir(init_process);
+        procfs::create_thread_dir(thread);
 
         thread->state = Thread::READY;
         sched_list_head.add_before(&thread->sched_link);
@@ -885,6 +887,8 @@ namespace sched {
             new_process->set_parent(old_process);
             procfs::create_process_dir(new_process);
         }
+
+        procfs::create_thread_dir(new_thread);
 
         if (flags & CLONE_CHILD_CLEARTID)
             new_thread->clear_child_tid = clone_args->child_tid;

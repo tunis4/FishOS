@@ -69,8 +69,9 @@ namespace sched {
         };
 
         State state;
-
         char name[64] = {};
+
+        vfs::Entry *procfs_dir = nullptr;
 
         Thread(Process *process, int tid);
         ~Thread();
@@ -144,7 +145,7 @@ namespace sched {
         ProcessGroup *group = nullptr;
         klib::ListHead group_link;
 
-        vfs::Entry *procfs_dir = nullptr;
+        vfs::Entry *procfs_dir = nullptr, *procfs_task_dir = nullptr;
 
         Process();
         ~Process();
