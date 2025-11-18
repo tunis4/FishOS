@@ -44,11 +44,9 @@ namespace pmm {
     void free_page(Page *page);
 
     inline uptr alloc_pages(usize num_pages) {
-        if (num_pages != 1) [[unlikely]]
-            panic("incorrect pmm allocation\n");
-        
+        ASSERT(num_pages == 1);
         Page *page = alloc_page();
-        return page->pfn * 0x1000;
+        return page->phy();
     }
 
     struct Stats {

@@ -170,6 +170,10 @@ namespace klib {
         return h;
     }
 
+    inline u64 hash_combine(u64 old_hash, u64 new_hash) {
+        return old_hash ^ (new_hash + 0x9e3779b97f4a7c15 + (old_hash << 6) + (old_hash >> 2));
+    }
+
     struct ScopeExitTag {};
 
     template<typename Function>
@@ -196,7 +200,7 @@ inline void* operator new[](usize, void *p)    { return p; }
 inline void  operator delete  (void *, void *) { }
 inline void  operator delete[](void *, void *) { }
 
-#define CONCAT(a, b) a ## b
+#define CONCAT(a, b) a##b
 #define CONCAT2(a, b) CONCAT(a, b)
 
 #define defer auto CONCAT2(_defer, __LINE__) = ::klib::ScopeExitTag{}->*[&]()

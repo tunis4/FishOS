@@ -5,7 +5,7 @@
 #include <klib/cstdio.hpp>
 
 namespace userland {
-    Pipe::Pipe() {
+    Pipe::Pipe() : pipe_event("Pipe::pipe_event") {
         node_type = vfs::NodeType::FIFO;
         event = &pipe_event;
     }
@@ -73,8 +73,17 @@ namespace userland {
         return revents;
     }
 
-    isize syscall_pipe(int pipefd[2], int flags) {
-        log_syscall("pipe(%#lX, %d)\n", (uptr)pipefd, flags);
+    isize Pipe::ioctl(vfs::FileDescription *fd, usize cmd, void *arg) {
+        switch (cmd) {
+        case FIONREAD:
+            *(int*)arg = ring_buffer.data_count();
+            return 0;
+        default:
+            return vfs::VNode::ioctl(fd, cmd, arg);
+        }
+    }
+
+    static isize pipe_impl(int pipefd[2], int flags) {
         sched::Process *process = cpu::get_current_thread()->process;
 
         if (flags & ~(O_CLOEXEC | O_NONBLOCK)) {
@@ -95,5 +104,15 @@ namespace userland {
         process->file_descriptors[pipefd[1]].init(write_description, (flags & O_CLOEXEC) ? FD_CLOEXEC : 0);
 
         return 0;
+    }
+
+    isize syscall_pipe(int pipefd[2]) {
+        log_syscall("pipe(%#lX)\n", (uptr)pipefd);
+        return pipe_impl(pipefd, 0);
+    }
+
+    isize syscall_pipe2(int pipefd[2], int flags) {
+        log_syscall("pipe2(%#lX, %d)\n", (uptr)pipefd, flags);
+        return pipe_impl(pipefd, flags);
     }
 }

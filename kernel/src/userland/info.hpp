@@ -5,6 +5,6 @@
 #include <sys/sysinfo.h>
 
 namespace userland {
-    isize syscall_uname(utsname *buf);
-    isize syscall_sysinfo(sysinfo *buf);
+    isize syscall_uname(struct utsname *buf);
+    isize syscall_sysinfo(struct sysinfo *buf);
 }

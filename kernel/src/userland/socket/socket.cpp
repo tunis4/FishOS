@@ -9,6 +9,10 @@
 #include <klib/cstdio.hpp>
 #include <errno.h>
 
+#define SHUT_RD 0
+#define SHUT_WR 1
+#define SHUT_RDWR 2
+
 namespace socket {
     Socket::Socket() {
         node_type = vfs::NodeType::SOCKET;
@@ -35,6 +39,16 @@ namespace socket {
         return this->sendmsg(fd, &hdr, 0);
     }
 
+    isize Socket::readv(vfs::FileDescription *fd, const iovec *iovs, int iovc, usize offset) {
+        msghdr hdr = { .msg_iov = (iovec*)iovs, .msg_iovlen = (usize)iovc };
+        return this->recvmsg(fd, &hdr, 0);
+    }
+
+    isize Socket::writev(vfs::FileDescription *fd, const iovec *iovs, int iovc, usize offset) {
+        msghdr hdr = { .msg_iov = (iovec*)iovs, .msg_iovlen = (usize)iovc };
+        return this->sendmsg(fd, &hdr, 0);
+    }
+
     isize syscall_socket(int family, int type, int protocol) {
         log_syscall("socket(%d, %d, %d)\n", family, type, protocol);
         int flags = type & (SOCK_CLOEXEC | SOCK_NONBLOCK);
@@ -42,9 +56,11 @@ namespace socket {
 
         Socket *socket;
         if (family == AF_LOCAL && type == SOCK_STREAM) {
-            socket = new LocalStreamSocket();
+            socket = new LocalStreamSocket(false);
         } else if (family == AF_LOCAL && type == SOCK_DGRAM) {
             socket = new LocalDatagramSocket();
+        } else if (family == AF_LOCAL && type == SOCK_SEQPACKET) {
+            socket = new LocalStreamSocket(true);
         } else if (family == AF_INET && type == SOCK_STREAM) {
             return -EAFNOSUPPORT; // socket = new TcpSocket();
         } else if (family == AF_INET && type == SOCK_DGRAM) {
@@ -64,15 +80,16 @@ namespace socket {
         if (family != AF_LOCAL)
             return -EAFNOSUPPORT;
 
-        sched::Process *process = cpu::get_current_thread()->process;
+        sched::Thread *thread = cpu::get_current_thread();
+        sched::Process *process = thread->process;
         ucred credentials;
         credentials.pid = process->pid;
-        credentials.uid = 0;
-        credentials.gid = 0;
+        credentials.uid = thread->cred.uids.eid;
+        credentials.gid = thread->cred.gids.eid;
 
-        if (type == SOCK_STREAM) {
-            auto *socket1 = new LocalStreamSocket();
-            auto *socket2 = new LocalStreamSocket();
+        if (type == SOCK_STREAM || type == SOCK_SEQPACKET) {
+            auto *socket1 = new LocalStreamSocket(type == SOCK_SEQPACKET);
+            auto *socket2 = new LocalStreamSocket(type == SOCK_SEQPACKET);
 
             socket1->ring_buffer = new LocalStreamSocket::RingBuffer();
             socket2->ring_buffer = new LocalStreamSocket::RingBuffer();
@@ -128,18 +145,44 @@ namespace socket {
         return socket->listen(description, backlog);
     }
 
-    isize syscall_accept(int fd, sockaddr *addr_ptr, socklen_t *addr_length, int flags) {
-        log_syscall("accept(%d, %#lX, %#lX, %d)\n", fd, (uptr)addr_ptr, (uptr)addr_length, flags);
+    isize syscall_accept4(int fd, sockaddr *addr_ptr, socklen_t *addr_length, int flags) {
+        log_syscall("accept4(%d, %#lX, %#lX, %d)\n", fd, (uptr)addr_ptr, (uptr)addr_length, flags);
         get_socket(fd);
         if (flags & ~(SOCK_NONBLOCK | SOCK_CLOEXEC))
             return -EINVAL;
         return socket->accept(description, addr_ptr, addr_length, flags);
     }
 
+    isize syscall_accept(int fd, sockaddr *addr_ptr, socklen_t *addr_length) {
+        log_syscall("accept(%d, %#lX, %#lX)\n", fd, (uptr)addr_ptr, (uptr)addr_length);
+        get_socket(fd);
+        return socket->accept(description, addr_ptr, addr_length, 0);
+    }
+
+    isize syscall_recvfrom(int fd, void *buf, usize size, int flags, sockaddr *src_addr, socklen_t *addrlen) {
+        log_syscall("recvfrom(%d, %#lX, %#lX, %d, %#lX, %#lX)\n", fd, (uptr)buf, size, flags, (uptr)src_addr, (uptr)addrlen);
+        get_socket(fd);
+        iovec iov = { .iov_base = buf, .iov_len = size };
+        msghdr hdr = { .msg_name = src_addr, .msg_iov = &iov, .msg_iovlen = 1 };
+        if (addrlen) hdr.msg_namelen = *addrlen;
+        isize ret = socket->recvmsg(description, &hdr, flags);
+        if (ret < 0) return ret;
+        if (addrlen) *addrlen = hdr.msg_namelen;
+        return ret;
+    }
+
     isize syscall_recvmsg(int fd, msghdr *hdr, int flags) {
         log_syscall("recvmsg(%d, %#lX, %d)\n", fd, (uptr)hdr, flags);
         get_socket(fd);
         return socket->recvmsg(description, hdr, flags);
+    }
+
+    isize syscall_sendto(int fd, void *buf, usize size, int flags, const sockaddr *dest_addr, socklen_t addrlen) {
+        log_syscall("sendto(%d, %#lX, %#lX, %d, %#lX, %#lX)\n", fd, (uptr)buf, size, flags, (uptr)dest_addr, (uptr)addrlen);
+        get_socket(fd);
+        iovec iov = { .iov_base = buf, .iov_len = size };
+        msghdr hdr = { .msg_name = (void*)dest_addr, .msg_namelen = addrlen, .msg_iov = &iov, .msg_iovlen = 1 };
+        return socket->sendmsg(description, &hdr, flags);
     }
 
     isize syscall_sendmsg(int fd, const msghdr *hdr, int flags) {
@@ -159,6 +202,18 @@ namespace socket {
     isize syscall_getsockopt(int fd, int layer, int number, void *buffer, socklen_t *size) {
         log_syscall("getsockopt(%d, %d, %d, %#lX, %#lX)\n", fd, layer, number, (uptr)buffer, (uptr)size);
         get_socket(fd);
+        if (layer == SOL_SOCKET) {
+            switch (number) {
+            case SO_TYPE:
+                *(int*)buffer = socket->socket_type;
+                *size = sizeof(int);
+                return 0;
+            case SO_DOMAIN:
+                *(int*)buffer = socket->socket_family;
+                *size = sizeof(int);
+                return 0;
+            }
+        }
         return socket->getsockopt(description, layer, number, buffer, size);
     }
 

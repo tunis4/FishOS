@@ -1,3 +1,6 @@
+// This file uses code from the Astral project
+// See NOTICE.md for the license of Astral
+
 #pragma once
 
 #include <klib/algorithm.hpp>
@@ -20,6 +23,7 @@ namespace klib {
 
         usize read(T *buffer, usize count) {
             count = min(count, data_count());
+            if (count == 0) return 0;
             usize first_pass_offset = read_index % size;
             usize first_pass_remaining = size - first_pass_offset;
             usize first_pass_count = min(count, first_pass_remaining);
@@ -58,6 +62,14 @@ namespace klib {
             if (free_count() < count)
                 truncate(count);
             return write(buffer, count);
+        }
+
+        // read first element without removing it
+        usize peek(T *buffer) {
+            if (is_empty())
+                return 0;
+            memcpy(buffer, data + (read_index % size), sizeof(T));
+            return 1;
         }
     };
 }

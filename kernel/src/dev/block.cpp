@@ -4,6 +4,7 @@
 #include <klib/cstring.hpp>
 #include <klib/cstdio.hpp>
 
+// FIXME: read_write and read_write_blocks are extremely hacky due to pagemap changing when coroutine suspends, need to find a better way to handle that
 namespace dev {
     klib::Awaitable<isize> BlockInterface::read_write_blocks(uptr buffer, usize block_count, usize first_block, Direction direction) {
         auto *pagemap = mem::vmm->active_pagemap;
@@ -26,7 +27,7 @@ namespace dev {
         if (buf_virt % 0x1000) {
             pmm::Page *tmp_page = pmm::alloc_page();
             defer { pmm::free_page(tmp_page); };
-            uptr tmp_phy = tmp_page->pfn * 0x1000;
+            uptr tmp_phy = tmp_page->phy();
 
             if (isize err = co_await read_write_block(offset / 0x1000, tmp_phy, direction); err < 0)
                 co_return err;
@@ -67,7 +68,7 @@ namespace dev {
         ASSERT(buf_virt % 0x1000 == 0);
         pmm::Page *tmp_page = pmm::alloc_page();
         defer { pmm::free_page(tmp_page); };
-        uptr tmp_phy = tmp_page->pfn * 0x1000;
+        uptr tmp_phy = tmp_page->phy();
 
         if (isize err = co_await read_write_block(offset / 0x1000, tmp_phy, direction); err < 0)
             co_return err;

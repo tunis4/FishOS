@@ -77,6 +77,7 @@ namespace gfx {
         switch (cmd) {
         case FBIOBLANK:
         case FBIOPUT_VSCREENINFO:
+        case FBIOPUTCMAP: // not stubbing this one causes xorg to log a billion errors and singlehandedly OOM the system lol
             return 0;
         case FBIOGET_FSCREENINFO: {
             auto *fi = (struct fb_fix_screeninfo*)arg;

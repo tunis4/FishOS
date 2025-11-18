@@ -7,15 +7,13 @@ namespace dev {
     void IoService::push(IoTask::Function *function, void *priv1, void *priv2) {
         IoTask *task = new IoTask(function, priv1, priv2);
 
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(task_list_lock);
+        klib::SpinlockGuard guard(task_list_lock);
         task_list.add_before(&task->task_link);
         queue_event.trigger(true);
     }
 
     IoTask* IoService::pop() {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(task_list_lock);
+        klib::SpinlockGuard guard(task_list_lock);
 
         if (task_list.is_empty())
             return nullptr;
@@ -24,7 +22,7 @@ namespace dev {
         return task;
     }
 
-    IoService::IoService() {
+    IoService::IoService() : queue_event("IoService::queue_event") {
         task_list.init();
     }
 
@@ -42,6 +40,6 @@ namespace dev {
     void init_io_service() {
         io_service.thread = sched::new_kernel_thread([] () {
             io_service.thread_loop();
-        }, true);
+        }, true, "IoService thread");
     }
 }

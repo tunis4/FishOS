@@ -17,9 +17,12 @@ namespace elf {
         if (memcmp(header.identifier, "\177ELF", 4))
             return -ENOEXEC;
 
-        if (header.identifier[EI_CLASS] != ELFCLASS64 || header.identifier[EI_DATA] != ELFDATA2LSB || header.identifier[EI_OSABI] != ELFOSABI_SYSV || header.arch != EM_X86_64)
+        if (header.identifier[EI_CLASS] != ELFCLASS64 || header.identifier[EI_DATA] != ELFDATA2LSB || header.arch != EM_X86_64)
+            return -ENOEXEC;
+        if (header.identifier[EI_OSABI] != ELFOSABI_SYSV && header.identifier[EI_OSABI] != ELFOSABI_GNU)
             return -ENOEXEC;
 
+        uptr file_virt_base = ~0; // i have no idea if this is the way you are supposed to do it but this is used to find the AT_PHDR address when PT_PHDR doesnt exist
         if (header.type == ET_EXEC)
             load_base = 0;
 
@@ -43,6 +46,7 @@ namespace elf {
 
                 uptr base = load_base + ph.virt_addr;
                 uptr aligned_base = klib::align_down(base, 0x1000);
+                file_virt_base = klib::min(file_virt_base, base);
 
                 // klib::printf("mapping %#lX length %#lX\n", aligned_base, mem_page_count * 0x1000);
                 pagemap->map_anonymous(aligned_base, mem_page_count * 0x1000, page_flags);
@@ -92,6 +96,8 @@ namespace elf {
         auxv->at_entry = load_base + header.entry_addr;
         auxv->at_phent = header.ph_entry_size;
         auxv->at_phnum = header.ph_count;
+        if (auxv->at_phdr == 0)
+            auxv->at_phdr = file_virt_base + header.ph_table_offset;
         return 0;
     }
 }

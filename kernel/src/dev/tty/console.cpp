@@ -17,8 +17,8 @@ namespace dev::tty {
         auto &term = gfx::kernel_terminal();
         winsize.ws_col = term.width_chars;
         winsize.ws_row = term.height_chars;
-        winsize.ws_xpixel = term.actual_width;
-        winsize.ws_ypixel = term.actual_height;
+        winsize.ws_xpixel = term.pixel_width;
+        winsize.ws_ypixel = term.pixel_height;
     }
 
     ConsoleDevNode::~ConsoleDevNode() {
@@ -100,7 +100,7 @@ namespace dev::tty {
  
         if (input_event.type != EV_KEY || input_event.value == 0)
             return;
-        
+
         switch (input_event.code) {
         case KEY_UP:    input_buffer.write_truncate("\e[A", 3); break;
         case KEY_LEFT:  input_buffer.write_truncate("\e[D", 3); break;

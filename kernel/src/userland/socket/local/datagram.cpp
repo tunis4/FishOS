@@ -14,7 +14,7 @@ namespace socket {
         return datagram;
     }
 
-    LocalDatagramSocket::LocalDatagramSocket() {
+    LocalDatagramSocket::LocalDatagramSocket() : socket_event("LocalDatagramSocket::socket_event") {
         socket_family = AF_LOCAL;
         socket_type = SOCK_DGRAM;
         event = &socket_event;
@@ -42,8 +42,28 @@ namespace socket {
         return revents;
     }
 
+    isize LocalDatagramSocket::ioctl(vfs::FileDescription *fd, usize cmd, void *arg) {
+        switch (cmd) {
+        case FIONREAD:
+            if (ring_buffer->is_empty()) {
+                *(int*)arg = 0;
+            } else {
+                Datagram *datagram;
+                ring_buffer->peek(&datagram);
+                *(int*)arg = datagram->length;
+            }
+            return 0;
+        case TIOCOUTQ:
+            klib::printf("LocalDatagramSocket::ioctl: TIOCOUTQ is unimplemented\n");
+            return -EINVAL;
+        default:
+            return vfs::VNode::ioctl(fd, cmd, arg);
+        }
+    }
+
     isize LocalDatagramSocket::bind(vfs::FileDescription *fd, const sockaddr *addr_ptr, socklen_t addr_length) {
-        sched::Process *process = cpu::get_current_thread()->process;
+        sched::Thread *thread = cpu::get_current_thread();
+        sched::Process *process = thread->process;
         auto *addr = (sockaddr_un*)addr_ptr;
 
         log_syscall("LocalDatagramSocket::bind(\"%s\")\n", addr->sun_path);
@@ -53,7 +73,7 @@ namespace socket {
         if (entry->parent == nullptr) return -ENOENT;
 
         entry->vnode = this;
-        entry->create(vfs::NodeType::SOCKET);
+        entry->create(vfs::NodeType::SOCKET, thread->cred.uids.eid, thread->cred.gids.eid, 0777 & ~process->umask);
         memset(&this->address, 0, sizeof(sockaddr_un));
         memcpy(&this->address, addr, get_local_addr_length(addr));
         return 0;
@@ -103,6 +123,7 @@ namespace socket {
         usize transferred = 0;
         for (usize i = 0; i < hdr->msg_iovlen; i++) {
             struct iovec *iov = &hdr->msg_iov[i];
+            if (iov->iov_len == 0) continue;
             usize count = klib::min(datagram->length - transferred, iov->iov_len);
             memcpy(iov->iov_base, datagram->data + transferred, count);
             transferred += count;
@@ -118,7 +139,7 @@ namespace socket {
     }
 
     isize LocalDatagramSocket::sendmsg(vfs::FileDescription *fd, const msghdr *hdr, int flags) {
-        if (flags & ~(MSG_DONTWAIT))
+        if (flags & ~(MSG_DONTWAIT | MSG_NOSIGNAL)) // FIXME: ignoring MSG_NOSIGNAL
             klib::printf("LocalDatagramSocket::sendmsg: unsupported flags %#X\n", flags);
         if (hdr->msg_controllen != 0)
             klib::printf("LocalDatagramSocket::sendmsg: hdr->msg_control unsupported\n");
@@ -140,7 +161,7 @@ namespace socket {
             if (target->socket_family != AF_LOCAL || target->socket_type != SOCK_DGRAM) return -EPROTOTYPE;
         }
 
-        while (connected->ring_buffer->is_full()) {
+        while (target->ring_buffer->is_full()) {
             if ((fd->flags & O_NONBLOCK) || (flags & MSG_DONTWAIT))
                 return -EWOULDBLOCK;
             if (socket_event.wait() == -EINTR)
@@ -158,14 +179,15 @@ namespace socket {
         usize copied = 0;
         for (usize i = 0; i < hdr->msg_iovlen; i++) {
             struct iovec *iov = &hdr->msg_iov[i];
+            if (iov->iov_len == 0) continue;
             memcpy(datagram->data + copied, iov->iov_base, iov->iov_len);
             copied += iov->iov_len;
         }
 
-        usize datagrams_written = connected->ring_buffer->write(&datagram, 1);
+        usize datagrams_written = target->ring_buffer->write(&datagram, 1);
         ASSERT(datagrams_written == 1);
 
-        connected->socket_event.trigger();
+        target->socket_event.trigger();
         return count;
     }
 
@@ -174,10 +196,12 @@ namespace socket {
     }
 
     isize LocalDatagramSocket::getsockopt(vfs::FileDescription *fd, int layer, int number, void *buffer, socklen_t *size) {
+        klib::printf("LocalDatagramSocket::getsockopt: unsupported option layer %d, number %d\n", layer, number);
         return -ENOPROTOOPT;
     }
 
     isize LocalDatagramSocket::setsockopt(vfs::FileDescription *fd, int layer, int number, const void *buffer, socklen_t size) {
+        klib::printf("LocalDatagramSocket::setsockopt: unsupported option layer %d, number %d\n", layer, number);
         return -ENOPROTOOPT;
     }
 

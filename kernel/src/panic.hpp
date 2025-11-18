@@ -1,5 +1,12 @@
 #pragma once
 
+#include <klib/common.hpp>
+
+struct StackFrame {
+    StackFrame *next;
+    uptr ip;
+};
+
 [[noreturn]] static inline void abort() {
     asm volatile("cli");
     while (true) asm volatile("hlt");

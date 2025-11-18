@@ -33,6 +33,11 @@ namespace userland {
         return process->group->leader_process->pid;
     }
 
+    isize syscall_getpgrp() {
+        log_syscall("getpgrp()\n");
+        return cpu::get_current_thread()->process->group->leader_process->pid;
+    }
+
     isize syscall_setpgid(int pid, int pgid) {
         log_syscall("setpgid(%d, %d)\n", pid, pgid);
         sched::Process *current_process = cpu::get_current_thread()->process;

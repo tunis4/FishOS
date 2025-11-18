@@ -31,7 +31,6 @@ namespace mem {
         kernel_virt_alloc_base = heap_base + heap_size;
 
         new (&kernel_pagemap) Pagemap();
-        kernel_pagemap.pml4 = (u64*)(pmm::alloc_pages(1) + hhdm);
         memset(kernel_pagemap.pml4, 0, 0x1000);
 
         usize kernel_size = 0;
@@ -54,7 +53,7 @@ namespace mem {
             default: entry_name = "Unknown";
             }
 
-            klib::printf("    %s | base: %#lX, size: %ld KiB\n", entry_name, entry->base, entry->length / 1024);
+            klib::printf("%12lx - %12lx    (%10ld KiB)  %s\n", entry->base, entry->base + entry->length, entry->length / 1024, entry_name);
 
             if (entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE || entry->type == LIMINE_MEMMAP_FRAMEBUFFER || entry->type == LIMINE_MEMMAP_USABLE || entry->type == LIMINE_MEMMAP_KERNEL_AND_MODULES)
                 kernel_pagemap.map_pages(entry->base, entry->base + hhdm, entry->length, flags);
@@ -62,28 +61,14 @@ namespace mem {
 
         klib::printf("VMM: Kernel base addresses | phy: %#lX, virt: %#lX\n", kernel_phy_base, kernel_virt_base);
 
-/*
-        klib::printf("VMM: Kernel PMRs:\n");
-        for (usize i = 0; i < tag_pmrs->entries; i++) {
-            auto pmr = tag_pmrs->pmrs[i];
-            u64 flags = PAGE_PRESENT;
-            if (pmr.permissions & STIVALE2_PMR_WRITABLE) flags |= PAGE_WRITABLE;
-            if (!(pmr.permissions & STIVALE2_PMR_EXECUTABLE)) flags |= PAGE_NO_EXECUTE;
-
-            map_pages((pmr.base - kernel_virt_base) + kernel_phy_base, pmr.base, pmr.length, flags);
-            
-            klib::printf("       base %#lX, size: %ld KiB, permissions: %ld\n", pmr.base, pmr.length / 1024, pmr.permissions);
-        }
-*/
-
         kernel_pagemap.map_pages(kernel_phy_base, kernel_virt_base, kernel_size, PAGE_PRESENT | PAGE_WRITABLE | PAGE_GLOBAL);
 
         new (&kernel_hhdm_range) MappedRange(hhdm_base, hhdm_end - hhdm_base, PAGE_PRESENT | PAGE_WRITABLE | PAGE_GLOBAL, MappedRange::Type::DIRECT);
         kernel_hhdm_range.phy_base = 0;
         new (&kernel_heap_range) MappedRange(heap_base, heap_size, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NO_EXECUTE | PAGE_GLOBAL, MappedRange::Type::ANONYMOUS);
 
-        kernel_pagemap.add_range(&kernel_hhdm_range, false, false);
-        kernel_pagemap.add_range(&kernel_heap_range, false, false);
+        kernel_pagemap.range_list.add_before(&kernel_hhdm_range.range_link);
+        kernel_pagemap.range_list.add_before(&kernel_heap_range.range_link);
         kernel_pagemap.activate();
     }
 
@@ -105,64 +90,55 @@ namespace mem {
             file->decrement_ref_count();
     }
 
-    MappedRange* MappedRange::copy() {
-        MappedRange *new_range = new MappedRange(this->base, this->length, this->page_flags, this->type);
-        new_range->phy_base = this->phy_base;
-        new_range->file = this->file;
-        new_range->file_offset = this->file_offset;
-        if (new_range->file)
-            new_range->file->increment_ref_count();
-        return new_range;
-    }
-
     Pagemap::Pagemap() {
         range_list.init();
+        page_table_pages_list.init();
+        pml4 = (u64*)(alloc_page_for_page_table() + hhdm);
     }
 
     Pagemap::~Pagemap() {
-        MappedRange *range;
-        LIST_FOR_EACH_SAFE(range, &range_list, range_link)
-            delete range;
+        {
+            MappedRange *range;
+            LIST_FOR_EACH_SAFE(range, &range_list, range_link)
+                delete range;
+        }
+        {
+            pmm::Page *page;
+            LIST_FOR_EACH_SAFE(page, &page_table_pages_list, link)
+                pmm::free_page(page);
+        }
     }
 
-    static u64* create_next_page_table(u64 *current_entry) {
-        uptr new_page = pmm::alloc_pages(1);
+    // returns physical address
+    uptr Pagemap::alloc_page_for_page_table() {
+        pmm::Page *new_page = pmm::alloc_page();
+        page_table_pages_list.add_before(&new_page->link);
+        return new_page->pfn * 0x1000;
+    }
+
+    u64* Pagemap::create_next_page_table(u64 *current_entry) {
+        uptr new_page = alloc_page_for_page_table();
         memset((void*)(new_page + hhdm), 0, 0x1000);
         *current_entry = new_page | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
         return (u64*)(new_page + hhdm);
     }
 
     void Pagemap::map_page(uptr phy, uptr virt, u64 flags) {
-        klib::LockGuard guard(this->lock);
-        u64 *current_table = this->pml4;
-
-        // klib::printf("Phy: %#lX, Virt: %#lX, Flags: %#lX\n", phy, virt, flags);
-
-        if (u64 *current_entry = &current_table[(virt >> 39) & 0x1FF]; *current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else current_table = create_next_page_table(current_entry);
-        if (u64 *current_entry = &current_table[(virt >> 30) & 0x1FF]; *current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else current_table = create_next_page_table(current_entry);
-        if (u64 *current_entry = &current_table[(virt >> 21) & 0x1FF]; *current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else current_table = create_next_page_table(current_entry);
-
-        u64 *entry = &current_table[virt >> 12 & 0x1FF];
+        klib::SpinlockGuard guard(this->lock);
+        u64 *entry = find_page_table_entry(virt, true);
         bool replaced = *entry != 0;
         *entry = (phy & 0x000FFFFFFFFFF000) | flags;
-        if (replaced) cpu::invlpg((void*)virt); // TODO: find a better way to do this
+        if (replaced) cpu::invlpg((void*)virt);
     }
 
     void Pagemap::map_pages(uptr phy, uptr virt, usize size, u64 flags) {
         usize num_pages = klib::align_up(size, 0x1000) / 0x1000;
-        // klib::printf("Mapping %ld pages phy %#lX virt %#lX end %#lX\n", num_pages, phy, virt, phy + num_pages * 0x1000);
         for (usize i = 0; i < num_pages; i++)
             map_page(phy + (i * 0x1000), virt + (i * 0x1000), flags);
     }
 
     void Pagemap::map_kernel() {
-        klib::LockGuard guard(this->lock);
+        klib::SpinlockGuard guard(this->lock);
         for (usize i = 256; i < 512; i++)
             pml4[i] = vmm->kernel_pagemap.pml4[i];
     }
@@ -174,68 +150,61 @@ namespace mem {
         }
     }
 
+    u64* Pagemap::find_page_table_entry(uptr virt, bool create_missing) {
+        u64 *current_table = this->pml4;
+
+        u64 *current_entry = &current_table[(virt >> 39) & 0x1FF];
+        if (*current_entry & PAGE_PRESENT) 
+            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
+        else if (create_missing) current_table = create_next_page_table(current_entry);
+        else return nullptr;
+        current_entry = &current_table[(virt >> 30) & 0x1FF];
+        if (*current_entry & PAGE_PRESENT) 
+            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
+        else if (create_missing) current_table = create_next_page_table(current_entry);
+        else return nullptr;
+        current_entry = &current_table[(virt >> 21) & 0x1FF];
+        if (*current_entry & PAGE_PRESENT) 
+            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
+        else if (create_missing) current_table = create_next_page_table(current_entry);
+        else return nullptr;
+
+        return &current_table[virt >> 12 & 0x1FF];
+    }
+
     isize Pagemap::get_physical_addr(uptr virt) {
-        auto get_actual = [&] -> uptr {
-            u64 *current_table = pml4;
-
-            if (u64 current_entry = current_table[(virt >> 39) & 0x1FF]; current_entry & PAGE_PRESENT) 
-                current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
-            else return 0;
-            if (u64 current_entry = current_table[(virt >> 30) & 0x1FF]; current_entry & PAGE_PRESENT) 
-                current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
-            else return 0;
-            if (u64 current_entry = current_table[(virt >> 21) & 0x1FF]; current_entry & PAGE_PRESENT) 
-                current_table = (u64*)((current_entry & 0x000FFFFFFFFFF000) + hhdm);
-            else return 0;
-
-            u64 *entry = &current_table[virt >> 12 & 0x1FF];
+        u64 *entry = find_page_table_entry(virt);
+        if (entry && (*entry & 0x000FFFFFFFFFF000))
             return *entry & 0x000FFFFFFFFFF000;
-        };
-
-        uptr phy = get_actual();
-        if (phy)
-            return phy;
         else
             return handle_page_fault(virt);
     }
 
     MappedRange* Pagemap::addr_to_range(uptr virt) {
+        if (cached_range_lookup && virt >= cached_range_lookup->base && virt < cached_range_lookup->end())
+            return cached_range_lookup;
+
         MappedRange *range;
         LIST_FOR_EACH(range, &this->range_list, range_link)
-            if (virt >= range->base && virt < range->base + range->length)
-                return range;
+            if (virt >= range->base && virt < range->end())
+                return cached_range_lookup = range;
 
         if (this == &vmm->kernel_pagemap)
             return nullptr;
 
         LIST_FOR_EACH(range, &vmm->kernel_pagemap.range_list, range_link)
-            if (virt >= range->base && virt < range->base + range->length)
-                return range;
+            if (virt >= range->base && virt < range->end())
+                return cached_range_lookup = range;
 
         return nullptr;
     }
 
     // returns errno if the page fault couldnt be handled
     isize Pagemap::handle_page_fault(uptr virt) {
-        // klib::LockGuard guard(this->lock);
+        // klib::SpinlockGuard guard(this->lock);
 
         uptr page_virt = klib::align_down(virt, 0x1000);
-        u64 *current_table = this->pml4;
-
-        u64 *current_entry = &current_table[(virt >> 39) & 0x1FF];
-        if (*current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else current_table = create_next_page_table(current_entry);
-        current_entry = &current_table[(virt >> 30) & 0x1FF];
-        if (*current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else current_table = create_next_page_table(current_entry);
-        current_entry = &current_table[(virt >> 21) & 0x1FF];
-        if (*current_entry & PAGE_PRESENT) 
-            current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-        else current_table = create_next_page_table(current_entry);
-
-        u64 *entry = &current_table[virt >> 12 & 0x1FF];
+        u64 *entry = find_page_table_entry(virt, true);
 
         if (!(*entry & PAGE_PRESENT)) {
             MappedRange *range = addr_to_range(virt);
@@ -282,10 +251,8 @@ namespace mem {
     }
     
     Pagemap* Pagemap::fork() {
-        forked = new Pagemap();
-        forked->forked = forked;
+        Pagemap *forked = new Pagemap();
 
-        forked->pml4 = (u64*)(pmm::alloc_pages(1) + hhdm);
         memcpy(forked->pml4, this->pml4, 0x1000);
         for (usize i = 256; i < 512; i++) // higher half
             forked->pml4[i] = this->pml4[i];
@@ -298,7 +265,7 @@ namespace mem {
 
             u64 *pml3 = (u64*)((this->pml4[i] & 0x000FFFFFFFFFF000) + hhdm);
 
-            uptr new_page = pmm::alloc_pages(1);
+            uptr new_page = alloc_page_for_page_table();
             memset((void*)(new_page + hhdm), 0, 0x1000);
             forked->pml4[i] = new_page | (pml4[i] & ~0x000FFFFFFFFFF000);
             u64 *forked_pml3 = (u64*)(new_page + hhdm);
@@ -311,7 +278,7 @@ namespace mem {
 
                 u64 *pml2 = (u64*)((pml3[i] & 0x000FFFFFFFFFF000) + hhdm);
 
-                uptr new_page = pmm::alloc_pages(1);
+                uptr new_page = alloc_page_for_page_table();
                 memset((void*)(new_page + hhdm), 0, 0x1000);
                 forked_pml3[i] = new_page | (pml3[i] & ~0x000FFFFFFFFFF000);
                 u64 *forked_pml2 = (u64*)(new_page + hhdm);
@@ -324,7 +291,7 @@ namespace mem {
 
                     u64 *pml1 = (u64*)((pml2[i] & 0x000FFFFFFFFFF000) + hhdm);
 
-                    uptr new_page = pmm::alloc_pages(1);
+                    uptr new_page = alloc_page_for_page_table();
                     memset((void*)(new_page + hhdm), 0, 0x1000);
                     forked_pml2[i] = new_page | (pml2[i] & ~0x000FFFFFFFFFF000);
                     u64 *forked_pml1 = (u64*)(new_page + hhdm);
@@ -338,8 +305,7 @@ namespace mem {
 
         MappedRange *old_range;
         LIST_FOR_EACH(old_range, &range_list, range_link) {
-            MappedRange *new_range = old_range->copy();
-            forked->add_range(new_range, false, false);
+            auto *new_range = forked->add_range(old_range->base, old_range->length, old_range->page_flags, old_range->type, old_range->phy_base, old_range->file, old_range->file_offset, false, false);
 
             if (new_range->type == MappedRange::Type::ANONYMOUS || new_range->type == MappedRange::Type::FILE) {
                 pmm::Page *old_page;
@@ -363,141 +329,170 @@ namespace mem {
         return forked;
     }
 
-    void Pagemap::add_range(MappedRange *new_range, bool merge, bool resolve_overlap) {
+    void Pagemap::assert_consistency() {
+        MappedRange *previous = nullptr;
+        LIST_FOR_EACH_SAFE(previous, &this->range_list, range_link) {
+            if (&next->range_link == &this->range_list)
+                break;
+            if (next->base < previous->end())
+                panic("Pagemap ranges not in order or overlapping");
+        }
+    }
+
+    MappedRange* Pagemap::add_range(uptr base, usize length, u64 page_flags, MappedRange::Type type, uptr phy_base, vfs::FileDescription *file,
+        usize file_offset, bool merge, bool resolve_overlap, bool keep_pages)
+    {
+        klib::InterruptLock interrupt_guard;
+        uptr end = base + length;
+
+        cached_range_lookup = nullptr;
+
         bool had_overlap = false;
-        if (resolve_overlap) {
+        bool need_to_resolve_overlap = resolve_overlap;
+        while (need_to_resolve_overlap) { // loop until all overlaps are resolved
+            need_to_resolve_overlap = false;
             MappedRange *existing;
             LIST_FOR_EACH_SAFE(existing, &this->range_list, range_link) {
-                if (new_range->base < existing->end() && new_range->end() > existing->base) {
-                    if (new_range->base == existing->base && new_range->length == existing->length) {
-                        delete existing;
-                    } else if (new_range->base == existing->base && new_range->length < existing->length) {
-                        existing->base += new_range->length;
-                        existing->length -= new_range->length;
-                    } else if (new_range->base > existing->base && new_range->end() == existing->end()) {
-                        existing->length -= new_range->length;
-                    } else if (new_range->base > existing->base && new_range->end() < existing->end()) {
-                        // need to split existing range
-                        usize base2 = new_range->end();
-                        usize length2 = existing->end() - new_range->end();
+                if (base >= existing->end() || end <= existing->base)
+                    continue; // no overlap
 
-                        existing->length = new_range->base - existing->base;
-
-                        MappedRange *split = existing->copy();
-                        split->base = base2;
-                        split->length = length2;
-                        add_range(split, false, false);
-                        split->invalidate_pages(this);
+                if (base <= existing->base) {
+                    if (end >= existing->end()) {
+                        if (keep_pages && base == existing->base && end == existing->end() && type == existing->type) {
+                            if (existing->page_flags != page_flags) {
+                                existing->page_flags = page_flags;
+                                invalidate_pages(existing);
+                            }
+                            break;
+                        } else {
+                            delete existing;
+                        }
+                    } else {
+                        usize overlap = end - existing->base;
+                        existing->base += overlap;
+                        existing->length -= overlap;
                     }
-                    had_overlap = true;
+                } else {
+                    if (end >= existing->end()) {
+                        existing->length -= existing->end() - base;
+                    } else {
+                        // need to split existing range
+                        usize base2 = end;
+                        usize length2 = existing->end() - end;
+
+                        existing->length = base - existing->base;
+
+                        auto *split = add_range(base2, length2, existing->page_flags, existing->type, existing->phy_base, existing->file, existing->file_offset, false, false);
+                        if (split)
+                            invalidate_pages(split);
+                    }
                 }
+                had_overlap = true;
+                need_to_resolve_overlap = true;
             }
         }
 
-        if (merge && new_range->type == MappedRange::Type::ANONYMOUS) {
+        if (merge && type == MappedRange::Type::ANONYMOUS) {
             MappedRange *existing;
             LIST_FOR_EACH_SAFE(existing, &this->range_list, range_link) {
-                if (new_range->type == existing->type &&
-                    new_range->page_flags == existing->page_flags)
-                {
-                    if (new_range->base == existing->end()) {
-                        existing->length += new_range->length;
-                    } else if (new_range->end() == existing->base) {
-                        existing->base -= new_range->length;
-                        existing->length += new_range->length;
+                if (type == existing->type && page_flags == existing->page_flags) {
+                    if (base == existing->end()) {
+                        existing->length += length;
+                    } else if (end == existing->base) {
+                        existing->base -= length;
+                        existing->length += length;
                     } else {
                         continue;
                     }
-                    existing->invalidate_pages(this);
-                    delete new_range;
-                    return;
+                    // invalidate_pages(existing); // FIXME: unsure if this is necessary
+                    return nullptr;
                 }
             }
         }
 
-#ifndef NDEBUG
+#if 0
         {
             MappedRange *other;
             LIST_FOR_EACH(other, &this->range_list, range_link)
-                if (new_range->base < other->base + other->length && new_range->base + new_range->length > other->base)
-                    panic("New MappedRange { base = %#lX, length = %#lX } overlaps with existing MappedRange { base = %#lX, length = %#lX }", new_range->base, new_range->length, other->base, other->length);
+                if (base < other->base + other->length && base + length > other->base)
+                    panic("New MappedRange { base = %#lX, length = %#lX } overlaps with existing MappedRange { base = %#lX, length = %#lX }", base, length, other->base, other->length);
         }
+        assert_consistency();
 #endif
 
+        if (type == MappedRange::Type::NONE) {
+            invalidate_pages(base, length);
+            return nullptr;
+        }
+
+        MappedRange *new_range = new MappedRange(base, length, page_flags, type);
+        new_range->phy_base = phy_base;
+        new_range->file = file;
+        new_range->file_offset = file_offset;
+        if (new_range->file)
+            new_range->file->increment_ref_count();
+
         MappedRange *previous = nullptr;
-        LIST_FOR_EACH_SAFE(previous, &this->range_list, range_link)
-            if (next->base > new_range->base)
+        LIST_FOR_EACH_SAFE(previous, &this->range_list, range_link) {
+            if (&next->range_link == &this->range_list)
                 break;
+            if (next->base > base)
+                break;
+        }
         previous->range_link.add(&new_range->range_link);
 
         if (had_overlap)
-            new_range->invalidate_pages(this);
+            invalidate_pages(new_range);
+        return new_range;
     }
 
     void Pagemap::map_anonymous(uptr base, usize length, u64 page_flags) {
         ASSERT(page_flags & PAGE_PRESENT);
-        MappedRange *range = new MappedRange(base, length, page_flags, MappedRange::Type::ANONYMOUS);
-        add_range(range);
+        add_range(base, length, page_flags, MappedRange::Type::ANONYMOUS, 0, nullptr, 0, true, true, true);
     }
 
     void Pagemap::map_direct(uptr base, usize length, u64 page_flags, uptr phy_base) {
         ASSERT(page_flags & PAGE_PRESENT);
-        MappedRange *range = new MappedRange(base, length, page_flags, MappedRange::Type::DIRECT);
-        range->phy_base = phy_base;
-        add_range(range);
+        add_range(base, length, page_flags, MappedRange::Type::DIRECT, phy_base, nullptr, 0);
     }
 
     void Pagemap::map_file(uptr base, usize length, u64 page_flags, vfs::FileDescription *file, usize file_offset) {
         ASSERT(page_flags & PAGE_PRESENT);
-        MappedRange *range = new MappedRange(base, length, page_flags, MappedRange::Type::FILE);
-        file->increment_ref_count();
-        range->file = file;
-        range->file_offset = file_offset;
-        add_range(range);
+        add_range(base, length, page_flags, MappedRange::Type::FILE, 0, file, file_offset);
     }
 
-    void MappedRange::invalidate_pages(Pagemap *pagemap) {
-        usize num_pages = klib::align_up(this->length, 0x1000) / 0x1000;
+    void Pagemap::invalidate_page(uptr virt, MappedRange *range) {
+        u64 *entry = find_page_table_entry(virt);
+        if (!entry || !(*entry & PAGE_PRESENT)) return;
+
+        u64 phy = (*entry & 0x000FFFFFFFFFF000);
+        pmm::Page *page = pmm::find_page(phy);
+        if (page->free) // FIXME
+            page = nullptr;
+        if (page)
+            page->link.remove();
+
+        if (range) {
+            ASSERT(range->page_flags & PAGE_PRESENT);
+            if (!page)
+                page = pmm::alloc_page();
+            page->mapped_addr = virt;
+            range->page_list.add_before(&page->link);
+            *entry = phy | range->page_flags;
+        } else {
+            *entry = 0;
+            if (page)
+                pmm::free_page(page);
+        }
+
+        cpu::invlpg((void*)virt);
+    }
+
+    void Pagemap::invalidate_pages(uptr base, usize length, MappedRange *range) {
+        usize num_pages = klib::align_up(length, 0x1000) / 0x1000;
         for (usize i = 0; i < num_pages; i++) {
-            uptr virt = this->base + (i * 0x1000);
-
-            u64 *current_table = pagemap->pml4;
-
-            u64 *current_entry = &current_table[(virt >> 39) & 0x1FF];
-            if (*current_entry & PAGE_PRESENT) 
-                current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-            else continue;
-            current_entry = &current_table[(virt >> 30) & 0x1FF];
-            if (*current_entry & PAGE_PRESENT) 
-                current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-            else continue;
-            current_entry = &current_table[(virt >> 21) & 0x1FF];
-            if (*current_entry & PAGE_PRESENT) 
-                current_table = (u64*)((*current_entry & 0x000FFFFFFFFFF000) + hhdm);
-            else continue;
-
-            u64 *entry = &current_table[virt >> 12 & 0x1FF];
-
-            if (*entry & PAGE_PRESENT) {
-                u64 phy = (*entry & 0x000FFFFFFFFFF000);
-                pmm::Page *page = pmm::find_page(phy);
-                if (page)
-                    page->link.remove();
-
-                if (this->page_flags & PAGE_PRESENT) {
-                    if (!page)
-                        page = pmm::alloc_page();
-                    page->mapped_addr = virt;
-                    this->page_list.add_before(&page->link);
-                    *entry = phy | this->page_flags;
-                } else {
-                    *entry = 0;
-                    if (page)
-                        pmm::free_page(page);
-                }
-
-                cpu::invlpg((void*)virt);
-            }
+            uptr virt = base + (i * 0x1000);
+            invalidate_page(virt, range);
         }
     }
 
@@ -521,6 +516,8 @@ namespace mem {
         if (length == 0) return -EINVAL;
         sched::Process *process = cpu::get_current_thread()->process;
 
+        klib::InterruptLock interrupt_guard;
+
         uptr base;
         usize aligned_size = klib::align_up(length, 0x1000);
         if (flags & MAP_FIXED) {
@@ -532,6 +529,8 @@ namespace mem {
         }
 
         if (flags & MAP_ANONYMOUS) {
+            if (flags & MAP_SHARED)
+                klib::printf("mmap: shared anonymous mapping not supported\n");
             process->pagemap->map_anonymous(base, aligned_size, mmap_prot_to_page_flags(prot));
         } else {
             vfs::FileDescription *description = vfs::get_file_description(fd);
@@ -550,25 +549,85 @@ namespace mem {
     isize syscall_munmap(void *addr, usize length) {
         log_syscall("munmap(%#lX, %#lX)\n", (uptr)addr, length);
         sched::Process *process = cpu::get_current_thread()->process;
+
+        if ((uptr)addr % 0x1000 != 0)
+            return -EINVAL;
         length = klib::align_up(length, 0x1000);
 
-        MappedRange *new_range = new MappedRange((uptr)addr, length, 0, MappedRange::Type::NONE);
-        process->pagemap->add_range(new_range, false, true);
-        delete new_range;
+        klib::InterruptLock interrupt_guard;
+
+        process->pagemap->add_range((uptr)addr, length, 0, MappedRange::Type::NONE, 0, nullptr, 0, false, true, false);
+
+        if (process->mmap_anon_base == (uptr)addr + length)
+            process->mmap_anon_base = (uptr)addr;
         return 0;
     }
 
     isize syscall_mprotect(void *addr, usize length, int prot) {
         log_syscall("mprotect(%#lX, %#lX, %d)\n", (uptr)addr, length, prot);
         sched::Process *process = cpu::get_current_thread()->process;
+
+        if ((uptr)addr % 0x1000 != 0)
+            return -EINVAL;
         length = klib::align_up(length, 0x1000);
 
+        klib::InterruptLock interrupt_guard;
+
         MappedRange *existing = process->pagemap->addr_to_range((uptr)addr);
-        MappedRange *new_range = existing->copy();
-        new_range->base = (uptr)addr;
-        new_range->length = length;
-        new_range->page_flags = mmap_prot_to_page_flags(prot);
-        process->pagemap->add_range(new_range);
+        process->pagemap->add_range((uptr)addr, length, mmap_prot_to_page_flags(prot), existing->type, existing->phy_base, existing->file, existing->file_offset, true, true, true);
         return 0;
+    }
+
+    isize syscall_mincore(void *addr, usize length, u8 *vec) {
+        log_syscall("mincore(%#lX, %#lX, %#lX)\n", (uptr)addr, length, (uptr)vec);
+        sched::Process *process = cpu::get_current_thread()->process;
+
+        if ((uptr)addr % 0x1000 != 0)
+            return -EINVAL;
+        length = klib::align_up(length, 0x1000);
+        usize num_pages = length / 0x1000;
+
+        klib::InterruptLock interrupt_guard;
+
+        for (usize i = 0; i < num_pages; i++) {
+            uptr page = (uptr)addr + i * 0x1000;
+            MappedRange *range = process->pagemap->addr_to_range(page);
+            if (range == nullptr)
+                return -ENOMEM;
+            vec[i] = 1; // FIXME: need to actually check residency
+        }
+        return 0;
+    }
+
+    isize syscall_madvise(void *addr, usize length, int advice) {
+        log_syscall("madvise(%#lX, %#lX, %d)\n", (uptr)addr, length, advice);
+        sched::Process *process = cpu::get_current_thread()->process;
+
+        if ((uptr)addr % 0x1000 != 0)
+            return -EINVAL;
+        length = klib::align_up(length, 0x1000);
+
+        klib::InterruptLock interrupt_guard;
+
+        switch (advice) {
+        case MADV_NORMAL:
+        case MADV_RANDOM:
+        case MADV_SEQUENTIAL:
+        case MADV_WILLNEED:
+        case MADV_DONTDUMP:
+        case MADV_DODUMP:
+            return 0; // these operations are safe to ignore
+        case MADV_FREE: // FIXME: not actually equivalent
+        case MADV_DONTNEED: {
+            usize num_pages = length / 0x1000;
+            for (usize i = 0; i < num_pages; i++) {
+                uptr page = (uptr)addr + i * 0x1000;
+                process->pagemap->invalidate_page(page);
+            }
+        } return 0;
+        default:
+            klib::printf("madvise: unsupported advice %d\n", advice);
+            return -EINVAL;
+        }
     }
 }

@@ -51,6 +51,7 @@ namespace dev::input {
         case EVIOCGID:
             memcpy(arg, &input_device->id, sizeof(struct input_id));
             return 0;
+        case EVIOCGEFFECTS:
         case EVIOCGRAB:
             return 0;
         }

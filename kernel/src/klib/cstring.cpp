@@ -73,7 +73,7 @@ namespace klib {
     }
 
     char* strstr(const char *str, const char *substr) {
-        usize n = strlen(str);
+        usize n = strlen(substr);
         while (*str)
             if (!memcmp(str++, substr, n))
                 return (char*)(str - 1);

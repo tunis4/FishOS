@@ -16,8 +16,7 @@ namespace mem::bump {
     }
 
     void* allocate(usize size, usize alignment) {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(alloc_lock);
+        klib::SpinlockGuard guard(alloc_lock);
 
         if (size == 0)
             return nullptr;

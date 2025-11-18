@@ -26,7 +26,7 @@ namespace mem {
 
     struct MappedRange {
         enum class Type {
-            NONE,
+            NONE, // only to be used as an argument to add_range
             DIRECT,
             ANONYMOUS,
             FILE
@@ -54,9 +54,6 @@ namespace mem {
         MappedRange(const MappedRange &) = delete;
         MappedRange(const MappedRange &&) = delete;
 
-        MappedRange* copy();
-
-        void invalidate_pages(Pagemap *pagemap);
         inline uptr end() { return base + length; }
 
         template<klib::Putchar Put>
@@ -80,17 +77,15 @@ namespace mem {
     struct Pagemap {
         u64 *pml4;
         klib::Spinlock lock;
+        klib::ListHead page_table_pages_list;
         klib::ListHead range_list;
-
-        // if this pagemap hasnt been forked, then this will be set to nullptr.
-        // if this pagemap has been forked, then this will point to the fork.
-        // if this pagemap is the fork, then this will point to itself.
-        Pagemap *forked;
+        MappedRange *cached_range_lookup = nullptr; // cache for addr_to_range
 
         Pagemap();
         ~Pagemap();
 
         void activate();
+        u64* find_page_table_entry(uptr virt, bool create_missing = false);
         isize get_physical_addr(uptr virt);
 
         void map_page(uptr phy, uptr virt, u64 flags);
@@ -101,12 +96,19 @@ namespace mem {
         void map_direct(uptr base, usize length, u64 page_flags, uptr phy_base);
         void map_file(uptr base, usize length, u64 page_flags, vfs::FileDescription *file, usize file_offset);
 
-        void add_range(MappedRange *new_range, bool merge = true, bool resolve_overlap = true);
+        MappedRange* add_range(uptr base, usize length, u64 page_flags, MappedRange::Type type, uptr phy_base, vfs::FileDescription *file,
+            usize file_offset, bool merge = true, bool resolve_overlap = true, bool keep_pages = false);
+
+        void invalidate_page(uptr virt, MappedRange *range = nullptr); // frees page if range is nullptr
+        void invalidate_pages(uptr base, usize length, MappedRange *range = nullptr); // frees pages if range is nullptr
+        void invalidate_pages(MappedRange *range) { return invalidate_pages(range->base, range->length, range); }
 
         MappedRange* addr_to_range(uptr virt);
         isize handle_page_fault(uptr virt);
 
         Pagemap* fork();
+
+        void assert_consistency();
 
         template<klib::Putchar Put>
         void print(Put put) {
@@ -114,6 +116,10 @@ namespace mem {
             LIST_FOR_EACH(range, &this->range_list, range_link)
                 range->print(put);
         }
+
+    private:
+        uptr alloc_page_for_page_table();
+        u64* create_next_page_table(u64 *current_entry);
     };
 
     struct VMM {
@@ -144,4 +150,6 @@ namespace mem {
     isize syscall_mmap(void *addr, usize length, int prot, int flags, int fd, isize offset);
     isize syscall_munmap(void *addr, usize length);
     isize syscall_mprotect(void *addr, usize length, int prot);
+    isize syscall_mincore(void *addr, usize length, u8 *vec);
+    isize syscall_madvise(void *addr, usize length, int advice);
 }

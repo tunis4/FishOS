@@ -32,40 +32,33 @@ namespace gfx {
 
         Type type;
         u8 *data;
-        u32 width, height;
+        u32 width = 8, height = 16;
         u32 num_glyph, bytes_per_glyph;
 
         int init(void *header);
     };
 
-    struct TerminalEmulator {
+    struct ColoredChar {
+        u64 encoded;
+        ColoredChar() { encoded = 0; }
+        ColoredChar(char c, u32 fg, u32 bg) { encoded = (u64)c | ((u64)(fg & 0x1FFFFFF) << 8) | ((u64)(bg & 0xFFFFFF) << 40); }
+        char c() { return encoded & 0xFF; }
+        u32 fg() { return (encoded >> 8) & 0x1FFFFFF; }
+        u32 bg() { return (encoded >> 40) & 0xFFFFFF; }
+        bool operator==(const ColoredChar &rhs) const { return encoded == rhs.encoded; }
+    };
+
+    class VirtualTerminal {
         static constexpr u32 bold_flag = 1 << 24;
 
         Framebuffer *framebuffer;
         Font regular_font, bold_font;
         klib::Spinlock lock;
 
-        char *text_buffer; // represents the currently displayed characters
-        u32 *fg_color_buffer; // represents the currently displayed foreground colors
-        u32 *bg_color_buffer; // represents the currently displayed background colors
-
-        // pixel area of the terminal
-        int terminal_width, terminal_height;
-        int terminal_x, terminal_y;
-
-        // size of terminal in chars
-        int width_chars, height_chars;
-
-        // terminal padding in pixels
-        int padding_top, padding_bottom;
-        int padding_left, padding_right;
-
-        // pixel area of the terminal, accounting for padding
-        int actual_width, actual_height;
-        int actual_x, actual_y;
+        ColoredChar *buffer; // currently displayed characters and colors
 
         // color of the terminal
-        u32 current_fg, current_bg, border;
+        u32 current_fg, current_bg;
         bool is_bold = false;
 
         // size of the used font
@@ -88,8 +81,7 @@ namespace gfx {
         void set_char_at(usize cx, usize cy, char c, u32 fg, u32 bg);
         void set_char_at_cursor(char c);
 
-        // scrolls down by 1 line
-        void scroll();
+        void scroll(); // scrolls down by 1 line
 
         void redraw_cursor();
         void move_cursor(int x, int y);
@@ -97,12 +89,21 @@ namespace gfx {
         void reset_control_sequence();
         void apply_control_sequence(char code);
 
-        TerminalEmulator(Framebuffer *fb);
-        ~TerminalEmulator();
-        
+    public:
+        VirtualTerminal(Framebuffer *fb);
+        ~VirtualTerminal();
+
+        void redraw();
         void write_char(char c);
+
+        // size of terminal in chars
+        int width_chars, height_chars;
+
+        // pixel area of the terminal
+        int pixel_width, pixel_height;
+        int pixel_x, pixel_y;
     };
 
     extern bool kernel_terminal_enabled;
-    TerminalEmulator& kernel_terminal();
+    VirtualTerminal& kernel_terminal();
 }

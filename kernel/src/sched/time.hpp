@@ -7,29 +7,30 @@
 
 namespace sched {
     struct Timer {
+        using Callback = void(void*);
+
         klib::TimeSpec remaining;
         Event event;
         klib::ListHead armed_timers_link;
+        Callback *callback = nullptr;
+        void *callback_data;
         bool fired = false;
 
-        Timer() {
-            armed_timers_link.init();
-        }
+        Timer() : event("Timer::event") {}
 
-        Timer(const klib::TimeSpec &time) : remaining(time) {
-            armed_timers_link.init();
-        }
-
-        void arm();
+        void arm(const klib::TimeSpec &time, Callback *callback = nullptr, void *callback_data = nullptr);
         void disarm();
     };
 
     void init_time(limine_boot_time_response *boot_time_res);
     void update_time(klib::TimeSpec interval);
 
-    klib::TimeSpec get_clock(clockid_t clock_id);
+    [[nodiscard]] klib::TimeSpec get_clock(clockid_t clock_id);
 
-    isize syscall_sleep(const klib::TimeSpec *duration, klib::TimeSpec *remaining);
+    isize syscall_time(time_t *t);
+    isize syscall_gettimeofday(timeval *tv);
     isize syscall_clock_gettime(clockid_t clock_id, klib::TimeSpec *time);
     isize syscall_clock_getres(clockid_t clock_id, klib::TimeSpec *res);
+    isize syscall_nanosleep(const klib::TimeSpec *duration, klib::TimeSpec *remaining);
+    isize syscall_clock_nanosleep(clockid_t clock_id, int flags, const klib::TimeSpec *duration, klib::TimeSpec *remaining);
 }

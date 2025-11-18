@@ -18,5 +18,6 @@ namespace userland {
         isize poll(vfs::FileDescription *fd, isize events) override;
     };
 
-    isize syscall_eventfd_create(uint initval, int flags);
+    isize syscall_eventfd2(uint initval, int flags);
+    isize syscall_eventfd(uint initval);
 }

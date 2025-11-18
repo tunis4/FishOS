@@ -10,31 +10,22 @@ namespace userland {
     };
     SignalDefault signal_default_action(int signal);
 
-    struct SignalAction {
-        void *handler;
-        usize flags;
+    struct KernelSigaction {
+        void (*handler)(int);
+        u64 flags;
+        void (*restorer)();
         u64 mask;
-
-        void from_sigaction(const struct sigaction *act) {
-            handler = (void*)act->sa_handler;
-            flags = act->sa_flags;
-            mask = *(u64*)&act->sa_mask;
-        }
-
-        void to_sigaction(struct sigaction *act) {
-            act->sa_handler = (void(*)(int))handler;
-            act->sa_flags = flags;
-            *(u64*)&act->sa_mask = mask;
-        }
     };
 
     void dispatch_pending_signal(sched::Thread *thread);
     void return_from_signal(sched::Thread *thread);
 
-    isize syscall_sigentry(uptr entry);
-    isize syscall_sigreturn(ucontext_t *ucontext, u64 saved_mask);
-    isize syscall_sigmask(int how, const u64 *set, u64 *retrieve);
-    isize syscall_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
-    isize syscall_kill(pid_t pid, int signal);
+    inline u64 get_signal_bit(int signal) { return (u64)1 << (signal - 1); }
+
+    isize syscall_rt_sigreturn();
+    isize syscall_rt_sigprocmask(int how, const u64 *set, u64 *retrieve);
+    isize syscall_rt_sigaction(int signum, const KernelSigaction *act, KernelSigaction *oldact);
     isize syscall_sigaltstack(const stack_t *new_signal_stack, stack_t *old_signal_stack);
+    isize syscall_kill(pid_t pid, int signal);
+    isize syscall_tgkill(pid_t pid, pid_t tid, int signal);
 }

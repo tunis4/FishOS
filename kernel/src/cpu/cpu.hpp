@@ -142,13 +142,13 @@ namespace cpu {
 
     static inline CPU* get_current_cpu() {
         CPU *cpu;
-        asm volatile("mov %%gs:0, %0" : "=r" (cpu) : : "memory");
+        asm("mov %%gs:0, %0" : "=r" (cpu));
         return cpu;
     }
 
     static inline sched::Thread* get_current_thread() {
         sched::Thread *thread;
-        asm volatile("mov %%gs:8, %0" : "=r" (thread) : : "memory");
+        asm("mov %%gs:8, %0" : "=r" (thread));
         return thread;
     }
 

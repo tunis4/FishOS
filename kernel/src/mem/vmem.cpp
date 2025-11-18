@@ -19,7 +19,7 @@ namespace mem::vmem {
     }
 
     BoundaryTag* allocate_tag() {
-        klib::LockGuard guard(free_tags_lock);
+        klib::SpinlockGuard guard(free_tags_lock);
         ASSERT(!free_tags_list_head.is_empty());
         BoundaryTag *tag = LIST_ENTRY(free_tags_list_head.next, BoundaryTag, tag_list);
         tag->tag_list.remove();
@@ -28,7 +28,7 @@ namespace mem::vmem {
     }
 
     void free_tag(BoundaryTag *tag) {
-        klib::LockGuard guard(free_tags_lock);
+        klib::SpinlockGuard guard(free_tags_lock);
         free_tags_list_head.add_before(&tag->tag_list);
         num_free_tags++;
     }

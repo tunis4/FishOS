@@ -6,10 +6,20 @@
 #include <sys/un.h>
 #include <errno.h>
 
+#undef CMSG_NXTHDR
+#define __CMSG_NEXT(c) ((char *)(c) + CMSG_ALIGN((c)->cmsg_len))
+#define __MHDR_LIMIT(m) ((char *)(m)->msg_control + (m)->msg_controllen)
+#define CMSG_NXTHDR(m, c) \
+    ((c)->cmsg_len < sizeof(struct cmsghdr) || \
+        (ptrdiff_t)(sizeof(struct cmsghdr) + CMSG_ALIGN((c)->cmsg_len)) \
+            >= __MHDR_LIMIT(m) - (char *)(c) \
+    ? (struct cmsghdr *)0 : (struct cmsghdr *)__CMSG_NEXT(c))
+
 namespace socket {
-    LocalStreamSocket::LocalStreamSocket() {
+    LocalStreamSocket::LocalStreamSocket(bool is_seqpacket) : socket_event("LocalStreamSocket::socket_event") {
+        this->is_seqpacket = is_seqpacket;
         socket_family = AF_LOCAL;
-        socket_type = SOCK_STREAM;
+        socket_type = is_seqpacket ? SOCK_SEQPACKET : SOCK_STREAM;
         event = &socket_event;
         address.sun_family = socket_family;
         pending_list.init();
@@ -47,8 +57,23 @@ namespace socket {
         return revents;
     }
 
+    isize LocalStreamSocket::ioctl(vfs::FileDescription *fd, usize cmd, void *arg) {
+        switch (cmd) {
+        case FIONREAD:
+            if (!ring_buffer)
+                return -EINVAL;
+            if (is_seqpacket)
+                klib::printf("LocalStreamSocket::ioctl: FIONREAD does not give correct value for SOCK_SEQPACKET\n");
+            *(int*)arg = ring_buffer->data_count();
+            return 0;
+        default:
+            return vfs::VNode::ioctl(fd, cmd, arg);
+        }
+    }
+
     isize LocalStreamSocket::bind(vfs::FileDescription *fd, const sockaddr *addr_ptr, socklen_t addr_length) {
-        sched::Process *process = cpu::get_current_thread()->process;
+        sched::Thread *thread = cpu::get_current_thread();
+        sched::Process *process = thread->process;
         auto *addr = (sockaddr_un*)addr_ptr;
 
         log_syscall("LocalStreamSocket::bind(\"%s\")\n", addr->sun_path);
@@ -58,14 +83,15 @@ namespace socket {
         if (entry->parent == nullptr) return -ENOENT;
 
         entry->vnode = this;
-        entry->create(vfs::NodeType::SOCKET);
+        entry->create(vfs::NodeType::SOCKET, thread->cred.uids.eid, thread->cred.gids.eid, 0777 & ~process->umask);
         memset(&this->address, 0, sizeof(sockaddr_un));
         memcpy(&this->address, addr, get_local_addr_length(addr));
         return 0;
     }
 
     isize LocalStreamSocket::connect(vfs::FileDescription *fd, const sockaddr *addr_ptr, socklen_t addr_length) {
-        sched::Process *process = cpu::get_current_thread()->process;
+        sched::Thread *thread = cpu::get_current_thread();
+        sched::Process *process = thread->process;
         auto *addr = (sockaddr_un*)addr_ptr;
         if (addr->sun_family != AF_LOCAL) return -EAFNOSUPPORT;
 
@@ -77,7 +103,7 @@ namespace socket {
 
         LocalStreamSocket *target = (LocalStreamSocket*)entry->vnode;
         {
-            klib::LockGuard guard(target->pending_lock);
+            klib::SpinlockGuard guard(target->pending_lock);
             if (target->num_pending >= target->max_pending)
                 return -ECONNREFUSED;
             target->pending_list.add_before(&pending_list);
@@ -88,8 +114,8 @@ namespace socket {
             return -EINTR;
 
         credentials.pid = process->pid;
-        credentials.uid = 0;
-        credentials.gid = 0;
+        credentials.uid = thread->cred.uids.eid;
+        credentials.gid = thread->cred.gids.eid;
 
         return 0;
     }
@@ -97,15 +123,16 @@ namespace socket {
     isize LocalStreamSocket::listen(vfs::FileDescription *fd, int backlog) {
         max_pending = backlog;
 
-        sched::Process *process = cpu::get_current_thread()->process;
+        sched::Thread *thread = cpu::get_current_thread();
+        sched::Process *process = thread->process;
         credentials.pid = process->pid;
-        credentials.uid = 0;
-        credentials.gid = 0;
+        credentials.uid = thread->cred.uids.eid;
+        credentials.gid = thread->cred.gids.eid;
         return 0;
     }
 
     isize LocalStreamSocket::accept(vfs::FileDescription *fd, sockaddr *addr_ptr, socklen_t *addr_length, int flags) {
-        klib::LockGuard guard(pending_lock);
+        klib::SpinlockGuard guard(pending_lock);
 
         while (pending_list.is_empty()) {
             if (fd->flags & O_NONBLOCK)
@@ -124,7 +151,7 @@ namespace socket {
             memcpy(addr_ptr, &accepted_peer->address, *addr_length);
         }
 
-        auto *connected_socket = new LocalStreamSocket();
+        auto *connected_socket = new LocalStreamSocket(is_seqpacket);
         connected_socket->peer = accepted_peer;
         connected_socket->ring_buffer = new RingBuffer();
         memset(&connected_socket->address, 0, sizeof(sockaddr_un));
@@ -173,14 +200,38 @@ namespace socket {
                 return -EINTR;
         }
 
+        u32 packet_length = 0;
+        if (is_seqpacket) {
+            isize ret = ring_buffer->read((u8*)&packet_length, sizeof(packet_length));
+            ASSERT(ret == sizeof(packet_length));
+        }
+
         usize transferred = 0;
         for (usize i = 0; i < hdr->msg_iovlen; i++) {
             struct iovec *iov = &hdr->msg_iov[i];
-            transferred += ring_buffer->read((u8*)iov->iov_base, iov->iov_len);
+            if (iov->iov_len == 0) continue;
+
+            usize amount_to_read = iov->iov_len;
+            if (is_seqpacket) {
+                amount_to_read = klib::min(amount_to_read, packet_length - transferred);
+                if (amount_to_read == 0)
+                    break;
+            }
+
+            transferred += ring_buffer->read((u8*)iov->iov_base, amount_to_read);
             if (ring_buffer->is_empty())
                 break;
         }
-        peer->socket_event.trigger();
+
+        if (is_seqpacket) {
+            ASSERT(transferred <= packet_length);
+            if (transferred < packet_length) {
+                ring_buffer->truncate(packet_length - transferred);
+                hdr->msg_flags |= MSG_TRUNC;
+            }
+        }
+
+        peer->socket_event.trigger(true);
         return transferred;
     }
 
@@ -191,7 +242,7 @@ namespace socket {
         if (hdr->msg_namelen != 0)
             return -EISCONN;
 
-        for (cmsghdr *cmsg = CMSG_FIRSTHDR(hdr); cmsg; cmsg = CMSG_NXTHDR(hdr, cmsg)) {
+        for (cmsghdr *cmsg = CMSG_FIRSTHDR(hdr); cmsg; cmsg = CMSG_NXTHDR((msghdr*)hdr, cmsg)) {
             if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_CREDENTIALS) {
                 cmsghdr *copied_cmsg = (cmsghdr*)klib::calloc(CMSG_ALIGN(cmsg->cmsg_len));
                 memcpy(copied_cmsg, cmsg, cmsg->cmsg_len);
@@ -212,14 +263,26 @@ namespace socket {
                 return -EINTR;
         }
 
+        if (is_seqpacket) {
+            u32 packet_length = 0;
+            for (usize i = 0; i < hdr->msg_iovlen; i++) {
+                struct iovec *iov = &hdr->msg_iov[i];
+                packet_length += iov->iov_len;
+            }
+
+            isize ret = ring_buffer->write((u8*)&packet_length, sizeof(packet_length));
+            ASSERT(ret == sizeof(packet_length));
+        }
+
         usize transferred = 0;
         for (usize i = 0; i < hdr->msg_iovlen; i++) {
             struct iovec *iov = &hdr->msg_iov[i];
+            if (iov->iov_len == 0) continue;
             transferred += peer->ring_buffer->write((u8*)iov->iov_base, iov->iov_len);
             if (peer->ring_buffer->is_full())
                 break;
         }
-        peer->socket_event.trigger();
+        peer->socket_event.trigger(true);
         return transferred;
     }
 
@@ -228,19 +291,31 @@ namespace socket {
     }
 
     isize LocalStreamSocket::getsockopt(vfs::FileDescription *fd, int layer, int number, void *buffer, socklen_t *size) {
-        if (layer == SOL_SOCKET && number == SO_PASSCRED) {
-            *(int*)buffer = passcred;
-            *size = sizeof(int);
-        } else if (layer == SOL_SOCKET && number == SO_PEERCRED) {
-            *(ucred*)buffer = peer->credentials;
-            *size = sizeof(ucred);
-        } else if (layer == SOL_SOCKET && (number == SO_SNDBUF || number == SO_RCVBUF)) {
-            *(int*)buffer = ring_buffer->size;
-            *size = sizeof(int);
-        } else {
-            return -ENOPROTOOPT;
+        if (layer == SOL_SOCKET) {
+            switch (number) {
+            case SO_PASSCRED:
+                *(int*)buffer = passcred;
+                *size = sizeof(int);
+                return 0;
+            case SO_PEERCRED:
+                *(ucred*)buffer = peer->credentials;
+                *size = sizeof(ucred);
+                return 0;
+            case SO_SNDBUF:
+            case SO_RCVBUF:
+                *(int*)buffer = ring_buffer->size;
+                *size = sizeof(int);
+                return 0;
+            case SO_KEEPALIVE:
+                *(int*)buffer = 0;
+                *size = sizeof(int);
+                return 0;
+            case SO_PEERSEC:
+                return -ENOPROTOOPT;
+            }
         }
-        return 0;
+        klib::printf("LocalStreamSocket::getsockopt: unsupported option layer %d, number %d\n", layer, number);
+        return -ENOPROTOOPT;
     }
 
     isize LocalStreamSocket::setsockopt(vfs::FileDescription *fd, int layer, int number, const void *buffer, socklen_t size) {
@@ -248,7 +323,10 @@ namespace socket {
             passcred = *(int*)buffer;
         } else if (layer == SOL_SOCKET && (number == SO_SNDBUF || number == SO_RCVBUF)) {
             // no-op
+        } else if (layer == 6) {
+            return -EOPNOTSUPP;
         } else {
+            klib::printf("LocalStreamSocket::setsockopt: unsupported option layer %d, number %d\n", layer, number);
             return -ENOPROTOOPT;
         }
         return 0;

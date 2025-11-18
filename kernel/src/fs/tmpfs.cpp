@@ -20,7 +20,7 @@ namespace tmpfs {
 
     void Filesystem::create(vfs::Entry *entry, vfs::NodeType new_node_type) {
         if (!entry->vnode) {
-            ASSERT(new_node_type != vfs::NodeType::NONE);
+            ASSERT(new_node_type != vfs::NodeType::HARD_LINK);
             entry->vnode = new Node();
             entry->vnode->node_type = new_node_type;
         }
@@ -31,7 +31,7 @@ namespace tmpfs {
         entry->vnode->modification_time = realtime_clock;
         entry->vnode->access_time = realtime_clock;
 
-        auto *node_data = (NodeData*)klib::calloc(sizeof(NodeData));
+        auto *node_data = new NodeData();
         node_data->inode_num = last_inode_num++;
 
         entry->vnode->fs_data = node_data;
@@ -49,9 +49,22 @@ namespace tmpfs {
             statbuf->st_size = node_data->size;
         statbuf->st_blksize = 4096;
         statbuf->st_blocks = (statbuf->st_size + 4095) / 4096;
-        statbuf->st_nlink = 1;
+        statbuf->st_nlink = 2; // FIXME: hack for useradd
     }
-    
+
+    void Filesystem::statfs(struct statfs *buf) {
+        buf->f_type = TMPFS_MAGIC;
+        *(u64*)&buf->f_fsid = 0x21948930289035;
+        buf->f_namelen = 255;
+        buf->f_bsize = 0x1000;
+        buf->f_frsize = 0x1000;
+        buf->f_blocks = pmm::stats.total_pages_usable;
+        buf->f_bfree = pmm::stats.total_free_pages;
+        buf->f_bavail = pmm::stats.total_free_pages;
+        buf->f_files = 1 << 20;
+        buf->f_ffree = (1 << 20) - 1000;
+    }
+
     isize Filesystem::readdir(vfs::Entry *entry, void *buf, usize max_size, usize *cursor) {
         usize i = 0, count = 0;
         vfs::Entry *child;
@@ -77,7 +90,18 @@ namespace tmpfs {
         return count;
     }
 
+    void Node::grow_to(usize length) {
+        NodeData *node_data = (NodeData*)fs_data;
+        node_data->size = length;
+        if (node_data->capacity < node_data->size) {
+            while (node_data->capacity < node_data->size)
+                node_data->capacity = klib::max((usize)1, node_data->capacity * 4);
+            node_data->storage = (u8*)klib::realloc(node_data->storage, node_data->capacity);
+        }
+    }
+
     isize Node::read(vfs::FileDescription *fd, void *buf, usize count, usize offset) {
+        if (node_type == vfs::NodeType::DIRECTORY) return -EISDIR;
         NodeData *node_data = (NodeData*)fs_data;
         if (offset >= node_data->size)
             return 0;
@@ -87,12 +111,11 @@ namespace tmpfs {
     }
 
     isize Node::write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) {
+        if (node_type == vfs::NodeType::DIRECTORY) return -EISDIR;
         NodeData *node_data = (NodeData*)fs_data;
         if (count == 0) [[unlikely]] return 0;
-        if (offset + count > node_data->size) {
-            node_data->size = klib::max(offset + count, node_data->size * 2);
-            node_data->storage = (u8*)klib::realloc(node_data->storage, node_data->size);
-        }
+        if (offset + count > node_data->size)
+            grow_to(offset + count);
         memcpy(node_data->storage + offset, buf, count);
         return count;
     }
@@ -129,14 +152,26 @@ namespace tmpfs {
         return addr;
     }
 
+    isize Node::truncate(vfs::FileDescription *fd, usize length) {
+        if (node_type == vfs::NodeType::DIRECTORY) return -EISDIR;
+        NodeData *node_data = (NodeData*)fs_data;
+        if (length > node_data->size) {
+            grow_to(length);
+            memset(node_data->storage + node_data->size, 0, length - node_data->size);
+        }
+        node_data->size = length;
+        return 0;
+    }
+
     vfs::Filesystem* Driver::mount(vfs::Entry *mount_entry) {
-        auto *tmpfs = new Filesystem();
-        tmpfs->last_inode_num = 1;
+        auto *fs = new Filesystem();
+        fs->last_inode_num = 2;
 
-        tmpfs->create(mount_entry, vfs::NodeType::DIRECTORY);
-        tmpfs->root_entry = mount_entry;
+        fs->create(mount_entry, vfs::NodeType::DIRECTORY);
+        mount_entry->vnode->fs_mounted_here = fs;
+        fs->root_entry = mount_entry;
 
-        return tmpfs;
+        return fs;
     }
 
     void Driver::unmount(vfs::Filesystem *fs) {

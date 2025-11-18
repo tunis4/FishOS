@@ -1,18 +1,34 @@
 #include <dev/input/input.hpp>
 #include <dev/input/ps2/ps2.hpp>
 #include <sched/time.hpp>
+#include <sched/sched.hpp>
 #include <sys/poll.h>
 #include <errno.h>
 
 namespace dev::input {
     KeyboardDevice *main_keyboard = nullptr;
     MouseDevice *main_mouse = nullptr;
+    InputListener *debug_key_listener = nullptr;
 
     void init() {
         ps2::init();
+
+        if (main_keyboard) {
+            debug_key_listener = main_keyboard->create_listener("debug_key_listener", [] (void*) {
+                input::InputEvent input_event;
+                while (debug_key_listener->event_buffer.read(&input_event, 1)) {
+                    if (input_event.type != EV_KEY || input_event.value == 0)
+                        return;
+                    if (main_keyboard->is_shift() && main_keyboard->is_alt()) {
+                        if (input_event.code == KEY_DELETE)
+                            sched::debug_print_threads();
+                    }
+                }
+            });
+        }
     }
 
-    InputDevice::InputDevice() {
+    InputDevice::InputDevice() : event("InputDevice::event") {
         listeners_list.init();
     }
 

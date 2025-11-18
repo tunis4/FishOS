@@ -4,7 +4,8 @@
 #include <klib/cstring.hpp>
 #include <fs/vfs.hpp>
 #include <dev/net.hpp>
-#include <sys/socket.h>
+#define _SYS_SOCKET_H
+#include <bits/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
 
@@ -30,6 +31,8 @@ namespace socket {
 
         isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
         isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override;
+        isize readv(vfs::FileDescription *fd, const iovec *iovs, int iovc, usize offset) override;
+        isize writev(vfs::FileDescription *fd, const iovec *iovs, int iovc, usize offset) override;
 
         isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return -ESPIPE; }
         isize mmap(vfs::FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) override { return -EACCES; }
@@ -62,8 +65,11 @@ namespace socket {
     isize syscall_bind(int fd, const sockaddr *addr_ptr, socklen_t addr_length);
     isize syscall_connect(int fd, const sockaddr *addr_ptr, socklen_t addr_length);
     isize syscall_listen(int fd, int backlog);
-    isize syscall_accept(int fd, sockaddr *addr_ptr, socklen_t *addr_length, int flags);
+    isize syscall_accept4(int fd, sockaddr *addr_ptr, socklen_t *addr_length, int flags);
+    isize syscall_accept(int fd, sockaddr *addr_ptr, socklen_t *addr_length);
+    isize syscall_recvfrom(int fd, void *buf, usize size, int flags, sockaddr *src_addr, socklen_t *addrlen);
     isize syscall_recvmsg(int fd, msghdr *hdr, int flags);
+    isize syscall_sendto(int fd, void *buf, usize size, int flags, const sockaddr *dest_addr, socklen_t addrlen);
     isize syscall_sendmsg(int fd, const msghdr *hdr, int flags);
     isize syscall_shutdown(int fd, int how);
     isize syscall_getsockopt(int fd, int layer, int number, void *buffer, socklen_t *size);

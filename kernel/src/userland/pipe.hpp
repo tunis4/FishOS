@@ -19,9 +19,11 @@ namespace userland {
         isize read(vfs::FileDescription *fd, void *buf, usize count, usize offset) override;
         isize write(vfs::FileDescription *fd, const void *buf, usize count, usize offset) override;
         isize poll(vfs::FileDescription *fd, isize events) override;
+        isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg) override;
         isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override { return -ESPIPE; }
         isize mmap(vfs::FileDescription *fd, uptr addr, usize length, isize offset, int prot, int flags) override { return -EACCES; }
     };
 
-    isize syscall_pipe(int pipefd[2], int flags);
+    isize syscall_pipe(int pipefd[2]);
+    isize syscall_pipe2(int pipefd[2], int flags);
 }

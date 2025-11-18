@@ -4,6 +4,7 @@
 #include <userland/socket/socket.hpp>
 
 namespace socket {
+    // also implements SOCK_SEQPACKET
     struct LocalStreamSocket final : public Socket {
         using RingBuffer = klib::RingBuffer<u8, 52 * 0x1000>;
 
@@ -20,11 +21,14 @@ namespace socket {
         ucred credentials;
         bool passcred = false;
 
-        LocalStreamSocket();
+        bool is_seqpacket = false;
+
+        LocalStreamSocket(bool is_seqpacket);
         ~LocalStreamSocket();
 
         void close(vfs::FileDescription *fd) override;
         isize poll(vfs::FileDescription *fd, isize events) override;
+        isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg) override;
 
         isize bind(vfs::FileDescription *fd, const sockaddr *addr_ptr, socklen_t addr_length) override;
         isize connect(vfs::FileDescription *fd, const sockaddr *addr_ptr, socklen_t addr_length) override;

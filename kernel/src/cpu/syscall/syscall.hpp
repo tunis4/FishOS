@@ -3,6 +3,7 @@
 #include <klib/common.hpp>
 
 #define SYSCALL_TRACE 0
+#define UNIMPLEMENTED_SYSCALL_TRACE 0
 
 #if SYSCALL_TRACE
 #include <klib/cstdio.hpp>

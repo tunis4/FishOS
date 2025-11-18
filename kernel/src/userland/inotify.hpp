@@ -20,7 +20,7 @@ namespace userland {
         isize poll(vfs::FileDescription *fd, isize events) override;
     };
 
-    isize syscall_inotify_create(int flags);
+    isize syscall_inotify_init1(int flags);
     isize syscall_inotify_add_watch(int ifd, const char *path, u32 mask);
     isize syscall_inotify_rm_watch(int ifd, int wd);
 }

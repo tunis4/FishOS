@@ -6,7 +6,7 @@
 #include <sys/eventfd.h>
 
 namespace userland {
-    EventFD::EventFD() {
+    EventFD::EventFD() : eventfd_event("EventFD::eventfd_event") {
         node_type = vfs::NodeType::EVENTFD;
         event = &eventfd_event;
     }
@@ -62,11 +62,10 @@ namespace userland {
         return revents;
     }
 
-    isize syscall_eventfd_create(uint initval, int flags) {
-        log_syscall("eventfd_create(%#X, %#X)\n", initval, flags);
+    static isize eventfd_impl(uint initval, int flags) {
         sched::Process *process = cpu::get_current_thread()->process;
 
-        if (flags & ~(EFD_NONBLOCK | EFD_NONBLOCK | EFD_SEMAPHORE))
+        if (flags & ~(EFD_NONBLOCK | EFD_CLOEXEC | EFD_SEMAPHORE))
             return -EINVAL;
 
         auto *eventfd = new EventFD();
@@ -75,8 +74,18 @@ namespace userland {
             eventfd->is_semaphore = true;
 
         int efd = process->allocate_fdnum();
-        auto *description = new vfs::FileDescription(eventfd, O_RDWR | (flags & O_NONBLOCK));
-        process->file_descriptors[efd].init(description, (flags & O_CLOEXEC) ? FD_CLOEXEC : 0);
+        auto *description = new vfs::FileDescription(eventfd, O_RDWR | (flags & EFD_NONBLOCK) ? O_NONBLOCK : 0);
+        process->file_descriptors[efd].init(description, (flags & EFD_CLOEXEC) ? FD_CLOEXEC : 0);
         return efd;
+    }
+
+    isize syscall_eventfd2(uint initval, int flags) {
+        log_syscall("eventfd2(%#X, %#X)\n", initval, flags);
+        return eventfd_impl(initval, flags);
+    }
+
+    isize syscall_eventfd(uint initval) {
+        log_syscall("eventfd(%#X)\n", initval);
+        return eventfd_impl(initval, 0);
     }
 }

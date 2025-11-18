@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# source: https://gist.github.com/mintsuki/2079737d76f30c7dae1e8cb791325082
+
 set -e
 
 ARCH="$1"

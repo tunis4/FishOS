@@ -87,7 +87,7 @@ namespace dev::virtio {
         last_seen_used = 0;
 
         page = pmm::alloc_page();
-        uptr addr = page->pfn * 0x1000 + mem::hhdm;
+        uptr addr = page->phy() + mem::hhdm;
         descriptor_array = (Descriptor*)addr;
         available_ring = (AvailableRing*)((uptr)descriptor_array + length * sizeof(Descriptor));
         used_ring = (UsedRing*)((uptr)available_ring + sizeof(AvailableRing) + sizeof(u16) * length);
@@ -104,8 +104,7 @@ namespace dev::virtio {
     }
 
     u16 Queue::alloc_descriptor() {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(lock);
+        klib::SpinlockGuard guard(lock);
 
         u16 index = free_desc_index;
         if (index == length)
@@ -116,8 +115,7 @@ namespace dev::virtio {
     }
 
     void Queue::free_descriptor(u16 index) {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(lock);
+        klib::SpinlockGuard guard(lock);
 
         descriptor_array[index].next = free_desc_index;
         free_desc_index = index;
@@ -125,8 +123,7 @@ namespace dev::virtio {
     }
 
     void Queue::submit_descriptor(u16 index) {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(lock);
+        klib::SpinlockGuard guard(lock);
 
         available_ring->ring[available_ring->index % length] = index;
         mmio::sync();
@@ -143,7 +140,7 @@ namespace dev::virtio {
 
         requests_page = pmm::alloc_page();
         usize num_requests = 0x1000 / sizeof(Request);
-        Request *requests = (Request*)(requests_page->pfn * 0x1000 + mem::hhdm);
+        Request *requests = (Request*)(requests_page->phy() + mem::hhdm);
         first_free_request = &requests[0];
         for (usize i = 0; i < num_requests; i++) {
             Request *request = new (&requests[i]) Request();
@@ -193,8 +190,7 @@ namespace dev::virtio {
     }
 
     BlockDevice::Request* BlockDevice::alloc_request() {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(requests_lock);
+        klib::SpinlockGuard guard(requests_lock);
 
         if (first_free_request == nullptr)
             return nullptr;
@@ -204,14 +200,12 @@ namespace dev::virtio {
     }
 
     void BlockDevice::free_request(Request *request) {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(requests_lock);
+        klib::SpinlockGuard guard(requests_lock);
 
         request->next = first_free_request;
         first_free_request = request;
     }
 
-    // FIXME: the request and 3 descriptors won't be freed if any of them fail to allocate
     klib::RootAwaitable<isize> BlockDevice::read_write_block(usize block, uptr page_phy, Direction direction) {
         isize err = 0;
         auto *descriptors = queue.descriptor_array;
@@ -219,7 +213,6 @@ namespace dev::virtio {
         auto *request = alloc_request();
         defer { if (err < 0) free_request(request); };
         if (!request) return err = -ENOMEM;
-        // klib::printf("alloc request %#lX, block %lu, page_phy %#lX\n", (uptr)request, block, page_phy);
 
         request->request_header.type = direction == WRITE ? RequestHeader::TYPE_OUT : RequestHeader::TYPE_IN;
         request->request_header.sector = block * 8;
@@ -305,7 +298,7 @@ namespace dev::virtio {
                 return;
             }
 
-            rx_queue.descriptor_array[desc].address = page->pfn * 0x1000;
+            rx_queue.descriptor_array[desc].address = page->phy();
             rx_queue.descriptor_array[desc].length = buffer_size;
             rx_queue.descriptor_array[desc].flags = Queue::Descriptor::FLAG_DEVICE_WRITE;
             rx_queue.submit_descriptor(desc);
@@ -333,7 +326,7 @@ namespace dev::virtio {
         if (page == nullptr)
             return {};
         return net::Packet {
-            .addr = mem::hhdm + page->pfn * 0x1000,
+            .addr = mem::hhdm + page->phy(),
             .size = sizeof(PacketHeader) + sizeof(net::EthHeader) + requested_size,
             .offset = sizeof(PacketHeader) + sizeof(net::EthHeader)
         };

@@ -26,6 +26,7 @@
 #include <userland/elf.hpp>
 #include <userland/futex.hpp>
 #include <fs/vfs.hpp>
+#include <fs/procfs.hpp>
 #include <fs/initramfs.hpp>
 #include <dev/io_service.hpp>
 #include <dev/devnode.hpp>
@@ -100,13 +101,8 @@ static volatile LIMINE_REQUESTS_END_MARKER;
 extern "C" void (*__init_array_start[])();
 extern "C" void (*__init_array_end[])();
 
-struct StackFrame {
-    StackFrame *next;
-    uptr ip;
-};
-
 [[noreturn]] void panic(const char *format, ...) {
-    gfx::kernel_terminal_enabled = true;
+    // gfx::kernel_terminal_enabled = true;
     klib::printf_unlocked("\nKernel Panic: ");
     va_list list;
     va_start(list, format);
@@ -147,7 +143,7 @@ extern "C" [[noreturn]] void kmain() {
     cpu::early_init();
     mem::vmem::early_init();
 
-    static u8 vmm_data[sizeof(mem::VMM)]; // FIXME: insanely cursed, needed for global constructors to work but there has to be a better way
+    alignas(alignof(mem::VMM)) static u8 vmm_data[sizeof(mem::VMM)]; // FIXME: insanely cursed, needed for global constructors to work but there has to be a better way
     mem::vmm = new (&vmm_data) mem::VMM();
     mem::vmm->init(hhdm, memmap_req.response, kernel_addr_req.response);
     klib::printf("VMM: Initialized\n");
@@ -175,13 +171,13 @@ extern "C" [[noreturn]] void kmain() {
 
     sched::init();
     sched::init_time(boot_time_req.response);
-    userland::init_futex();
     klib::printf("Scheduler: Initialized\n");
 
+    procfs::kernel_cmdline = kernel_file_req.response->kernel_file->cmdline;
     vfs::init();
     klib::printf("VFS: Initialized\n");
 
-    sched::new_kernel_thread(kernel_thread, true);
+    sched::new_kernel_thread(kernel_thread, true, "Kernel main thread");
     sched::start();
     
     asm volatile("sti");
@@ -197,7 +193,7 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
         entry->vnode = dev::CharDevNode::create_node(dev::make_dev_id(major, minor));
     else
         entry->vnode = dev::BlockDevNode::create_node(dev::make_dev_id(major, minor));
-    entry->create(is_char ? vfs::NodeType::CHAR_DEVICE : vfs::NodeType::BLOCK_DEVICE);
+    entry->create(is_char ? vfs::NodeType::CHAR_DEVICE : vfs::NodeType::BLOCK_DEVICE, 0, 0, 0664);
 }
 
 [[noreturn]] void kernel_thread() {
@@ -210,7 +206,7 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
 
     dev::input::init();
     klib::printf("Input: Initialized\n");
-    
+
     auto module_res = module_req.response;
     if (module_res->module_count == 0) panic("No initramfs Limine module loaded");
     if (module_res->module_count > 1) panic("Too many Limine modules loaded");
@@ -234,7 +230,7 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
 
     auto *input_dir = vfs::path_to_entry("/dev/input");
     ASSERT(input_dir->vnode == nullptr);
-    input_dir->create(vfs::NodeType::DIRECTORY);
+    input_dir->create(vfs::NodeType::DIRECTORY, 0, 0, 0755);
     if (dev::input::main_keyboard)
         create_device_file("/dev/input/event0", 13, 64, true);
     if (dev::input::main_mouse)
@@ -242,11 +238,11 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
 
     auto *pts_dir = vfs::path_to_entry("/dev/pts");
     ASSERT(pts_dir->vnode == nullptr);
-    pts_dir->create(vfs::NodeType::DIRECTORY);
+    pts_dir->create(vfs::NodeType::DIRECTORY, 0, 0, 0755);
     create_device_file("/dev/pts/ptmx", 5, 2, true);
     create_device_file("/dev/ptmx",     5, 2, true);
 
-    const char *init_path = "/usr/bin/init";
+    const char *init_path = "/usr/bin/init_wrapper";
     if (vfs::path_to_entry(init_path)->vnode == nullptr)
         panic("Failed to find %s", init_path);
 

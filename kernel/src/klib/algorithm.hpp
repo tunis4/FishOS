@@ -38,4 +38,34 @@ namespace klib {
         while (x /= base) i++;
         return i;
     }
+
+    template<Integral T>
+    inline T* qsort_partition(T *low, T *high) {
+        T pivot = *(low + (high - low) / 2);
+
+        while (true) {
+            while (*low < pivot)
+                ++low;
+
+            do {
+                --high;
+            } while (pivot < *high);
+
+            if (low >= high)
+                return low;
+            swap(*low, *high);
+            ++low;
+        }
+    }
+
+    // qsort implementation from https://stackoverflow.com/a/66288047
+    template<Integral T>
+    inline void qsort(T *begin, T *end) {
+        if (end - begin < 2)
+            return;
+
+        T *p = qsort_partition(begin, end);
+        qsort(begin, p);
+        qsort(p, end);
+    }
 }

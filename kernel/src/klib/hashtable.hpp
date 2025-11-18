@@ -10,6 +10,9 @@ namespace klib {
             klib::ListHead hash_link;
             K key;
             V value;
+
+            template<typename... Args>
+            Entry(const K &key, Args&&... args) : key(key), value(klib::forward<Args>(args)...) {}
         };
 
         klib::ListHead *table = nullptr;
@@ -39,21 +42,48 @@ namespace klib {
         V* operator [](const K &key) const {
             klib::ListHead *bucket = get_hash_bucket(key);
             Entry *entry;
-            LIST_FOR_EACH(entry, bucket, hash_link)
-                if (entry->key == key)
-                    return &entry->value;
+            LIST_FOR_EACH(entry, bucket, hash_link) {
+                if constexpr (is_same<K, const char*>) {
+                    if (strcmp(entry->key, key) == 0)
+                        return &entry->value;
+                } else {
+                    if (entry->key == key)
+                        return &entry->value;
+                }
+            }
             return nullptr;
         }
 
         template<typename... Args>
         V* emplace(const K &key, Args&&... args) {
             klib::ListHead *bucket = get_hash_bucket(key);
-            Entry *entry = new Entry();
-            entry->key = key;
-            new (&entry->value) V(klib::forward<Args>(args)...);
+            Entry *entry = new Entry(key, args...);
             bucket->add(&entry->hash_link);
             num_stored++;
             return &entry->value;
+        }
+
+        void remove(const K &key) {
+            klib::ListHead *bucket = get_hash_bucket(key);
+            Entry *entry;
+            LIST_FOR_EACH(entry, bucket, hash_link) {
+                if (entry->key == key) {
+                    num_stored--;
+                    entry->hash_link.remove();
+                    delete entry;
+                    return;
+                }
+            }
+        }
+
+        template<typename F>
+        void for_each(F func) {
+            for (usize i = 0; i < table_size; i++) {
+                Entry *entry;
+                LIST_FOR_EACH(entry, &table[i], hash_link) {
+                    func(entry->key, entry->value);
+                }
+            }
         }
     };
 

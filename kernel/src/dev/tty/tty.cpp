@@ -6,8 +6,8 @@ namespace dev::tty {
         termios.c_oflag = ONLCR;
         termios.c_lflag = ECHO | ICANON | ISIG;
         termios.c_cflag = 0;
-        termios.ibaud = 38400;
-        termios.obaud = 38400;
+        termios.c_ispeed = 38400;
+        termios.c_ospeed = 38400;
         termios.c_cc[VMIN] = 1;
         termios.c_cc[VINTR] = 0x03;
         termios.c_cc[VQUIT] = 0x1c;
@@ -27,33 +27,41 @@ namespace dev::tty {
     }
 
     void Terminal::on_read() {
-        // auto *process_group = cpu::get_current_thread()->process->process_group_leader;
+        // auto *process_group = cpu::get_current_thread()->process->group;
         // if (process_group != foreground_process_group)
-        //     process_group->send_process_group_signal(SIGTTIN);
+        //     process_group->send_signal(SIGTTIN);
     }
 
     void Terminal::on_write() {
-        // auto *process_group = cpu::get_current_thread()->process->process_group_leader;
+        // auto *process_group = cpu::get_current_thread()->process->group;
         // if (termios.c_lflag & TOSTOP)
         //     if (process_group != foreground_process_group)
-        //         process_group->send_process_group_signal(SIGTTOU);
+        //         process_group->send_signal(SIGTTOU);
     }
 
     isize Terminal::tty_ioctl(vfs::FileDescription *fd, usize cmd, void *arg) {
         switch (cmd) {
         case TIOCGWINSZ: {
-            memcpy(arg, &winsize, sizeof(winsize));
+            memcpy(arg, &winsize, sizeof(struct winsize));
         } return 0;
         case TIOCSWINSZ: {
-            memcpy(&winsize, arg, sizeof(winsize));
+            memcpy(&winsize, arg, sizeof(struct winsize));
         } return 0;
         case TCGETS: {
-            memcpy(arg, &termios, sizeof(termios));
+            memcpy(arg, &termios, sizeof(struct termios));
         } return 0;
         case TCSETS:
         case TCSETSW:
         case TCSETSF: {
-            memcpy(&termios, arg, sizeof(termios));
+            memcpy(&termios, arg, sizeof(struct termios));
+        } return 0;
+        case TCGETS2: {
+            memcpy(arg, &termios, sizeof(struct termios2));
+        } return 0;
+        case TCSETS2:
+        case TCSETSW2:
+        case TCSETSF2: {
+            memcpy(&termios, arg, sizeof(struct termios2));
         } return 0;
         case TIOCGPGRP: {
             if (fd->vnode != cpu::get_current_thread()->process->group->session->controlling_terminal)

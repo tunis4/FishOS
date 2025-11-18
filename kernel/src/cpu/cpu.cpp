@@ -10,7 +10,7 @@ namespace cpu {
     extern "C" void __syscall_entry();
 
     // const usize stack_size = 0x10000; // 64 KiB
-    const usize stack_size = 0x1000; // FIXME
+    const usize stack_size = 0x1000; // FIXME: too small but i cant allocate contigous physical memory 
 
     static CPU bsp_cpu;
 
@@ -105,6 +105,14 @@ namespace cpu {
         write_cr4(cr4);
 
         u32 eax, ebx, ecx, edx;
+        if (cpuid(7, 0, &eax, &ebx, &ecx, &edx)) {
+            if (ecx & (1 << 2))
+                cr4 |= u64(1) << 11; // enable UMIP
+            if (ebx & (1 << 7))
+                cr4 |= u64(1) << 20; // enable SMEP
+            write_cr4(cr4);
+        }
+    
         if (cpuid(1, 0, &eax, &ebx, &ecx, &edx)) {
             // check global pages support
             if (edx & (1 << 13)) {

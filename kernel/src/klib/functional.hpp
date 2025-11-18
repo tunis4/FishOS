@@ -19,7 +19,7 @@ namespace klib {
             F f;
 
         public:
-            CallableWrapper(const F &f) : f(klib::move(f)) {}
+            CallableWrapper(const F &f) : f(f) {}
 
             R invoke(Args ...args) override {
                 return f(args...);

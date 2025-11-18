@@ -3,11 +3,12 @@
 #include <dev/devnode.hpp>
 #include <cpu/cpu.hpp>
 #include <sched/sched.hpp>
-#include <termios.h>
+#include <asm/termbits.h>
+#include <sys/ioctl.h>
 
 namespace dev::tty {
     struct Terminal {
-        struct termios termios;
+        struct ktermios termios;
         struct winsize winsize;
         sched::ProcessGroup *foreground_process_group;
         sched::Session *session;

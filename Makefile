@@ -1,51 +1,44 @@
-ISO := /tmp/fishos.iso
-DISK := fishos.qcow2
+SYSROOT ?= sysroot
+ISO ?= /tmp/fishix.iso
+DISK ?= fishix.qcow2
 
-.PHONY: all run-tcg-bios run-uefi-kvm distro-base kernel-clean init-clean base-files-clean clean dist-clean iso-clean
+NPROC := $(patsubst -j%,%,$(filter -j%,$(MAKEFLAGS)))
+ifeq ($(NPROC),)
+NPROC := 1
+endif
 
-all: $(ISO)
+.PHONY: all kernel run iso-clean
 
-run-tcg-bios: $(ISO)
-	qemu-system-x86_64 -cdrom $(ISO) -m 8G -serial stdio \
-		-no-reboot -no-shutdown -M smm=off -s -d int
+all: kernel
 
-run-uefi-kvm: ovmf/OVMF.fd $(ISO) $(DISK)
-	qemu-system-x86_64 -cdrom $(ISO) -m 12G -serial stdio \
-		-no-reboot -no-shutdown -M smm=off -smp 1 -machine q35 \
+run: ovmf/OVMF.fd $(ISO) $(DISK)
+	qemu-system-x86_64 -cdrom $(ISO) -m 16G -serial stdio \
+		-no-reboot -no-shutdown -M smm=off -smp 1 -machine q35 -cpu host \
 		-bios ovmf/OVMF.fd \
         -drive file=$(DISK),if=virtio \
 		-netdev user,id=net0 -device virtio-net,netdev=net0 \
-		-enable-kvm -s -display gtk,gl=on -cpu host \
-		-object filter-dump,id=f1,netdev=net0,file=dump.pcap
+		-enable-kvm -display gtk,gl=on -s
+#		-object filter-dump,id=f1,netdev=net0,file=dump.pcap
+
+kernel: kernel/build
+	cd kernel && meson compile --jobs $(NPROC) -C build
+
+kernel/build:
+	cd kernel && meson setup build
+
+limine:
+	git clone --depth 1 --branch v10.x-binary https://codeberg.org/Limine/Limine limine
+	cd limine && make
 
 ovmf/OVMF.fd:
 	mkdir -p ovmf
 	cd ovmf && curl -o OVMF.fd https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd
 
-$(ISO):
-#	rm -f builds/kernel.built builds/kernel.packaged
-	./build-support/makeiso.sh $(ISO)
+$(ISO): kernel limine
+	./distro-files/makeiso.sh $(ISO) $(SYSROOT)
 
 $(DISK):
-	qemu-img create -f qcow2 fishos.qcow2 16G
-
-# kernel-clean:
-# 	rm -rf builds/kernel* pkgs/kernel*
-
-# init-clean:
-# 	rm -rf builds/init* pkgs/init*
-
-# base-files-clean:
-# 	rm -rf builds/base-files* pkgs/base-files*
+	qemu-img create -f qcow2 $(DISK) 16G
 
 iso-clean:
 	rm -rf $(ISO)
-
-# clean: kernel-clean init-clean base-files-clean iso-clean
-# 	rm -rf sysroot
-
-# dist-clean: ./jinx
-# 	./jinx clean
-# 	rm -rf sysroot $(ISO) jinx ovmf
-# 	chmod -R 777 .jinx-cache
-# 	rm -rf .jinx-cache

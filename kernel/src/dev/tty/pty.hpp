@@ -9,7 +9,7 @@ namespace dev::tty {
         PseudoTerminalEnd *peer;
         sched::Event pty_event;
         klib::RingBuffer<char, 0x1000> ring_buffer;
-        int pts_num;
+        int pts_num = -1;
         bool slave;
         bool packet_mode = false;
 

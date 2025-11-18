@@ -1,2 +1,0 @@
-#! /bin/bash
-/usr/bin/od -X -A n -N 16 /dev/urandom | /usr/bin/tr -d ' '

@@ -2,49 +2,49 @@
 #include <klib/cstring.hpp>
 
 namespace sched {
-    void from_ucontext(cpu::InterruptState *gpr_state, void *extended_state, const ucontext_t *ucontext) {
-        const mcontext_t *mcontext = &ucontext->uc_mcontext;
-        gpr_state->r15 = mcontext->gregs[REG_R15];
-        gpr_state->r14 = mcontext->gregs[REG_R14];
-        gpr_state->r13 = mcontext->gregs[REG_R13];
-        gpr_state->r12 = mcontext->gregs[REG_R12];
-        gpr_state->r11 = mcontext->gregs[REG_R11];
-        gpr_state->r10 = mcontext->gregs[REG_R10];
-        gpr_state->r9  = mcontext->gregs[REG_R9];
-        gpr_state->r8  = mcontext->gregs[REG_R8];
-        gpr_state->rbp = mcontext->gregs[REG_RBP];
-        gpr_state->rdi = mcontext->gregs[REG_RDI];
-        gpr_state->rsi = mcontext->gregs[REG_RSI];
-        gpr_state->rdx = mcontext->gregs[REG_RDX];
-        gpr_state->rcx = mcontext->gregs[REG_RCX];
-        gpr_state->rbx = mcontext->gregs[REG_RBX];
-        gpr_state->rax = mcontext->gregs[REG_RAX];
-        gpr_state->rip = mcontext->gregs[REG_RIP];
-        gpr_state->rsp = mcontext->gregs[REG_RSP];
-        gpr_state->rflags = mcontext->gregs[REG_EFL];
-        memcpy(extended_state, mcontext->fpregs, cpu::extended_state_size);
+    void from_ucontext(cpu::InterruptState *gpr_state, void *extended_state, const KernelUContext *ucontext) {
+        const sigcontext *mcontext = &ucontext->uc_mcontext;
+        gpr_state->r15 = mcontext->r15;
+        gpr_state->r14 = mcontext->r14;
+        gpr_state->r13 = mcontext->r13;
+        gpr_state->r12 = mcontext->r12;
+        gpr_state->r11 = mcontext->r11;
+        gpr_state->r10 = mcontext->r10;
+        gpr_state->r9  = mcontext->r9;
+        gpr_state->r8  = mcontext->r8;
+        gpr_state->rbp = mcontext->rbp;
+        gpr_state->rdi = mcontext->rdi;
+        gpr_state->rsi = mcontext->rsi;
+        gpr_state->rdx = mcontext->rdx;
+        gpr_state->rcx = mcontext->rcx;
+        gpr_state->rbx = mcontext->rbx;
+        gpr_state->rax = mcontext->rax;
+        gpr_state->rip = mcontext->rip;
+        gpr_state->rsp = mcontext->rsp;
+        gpr_state->rflags = mcontext->eflags;
+        memcpy(extended_state, mcontext->fpstate, cpu::extended_state_size);
     }
 
-    void to_ucontext(const cpu::InterruptState *gpr_state, void *extended_state, ucontext_t *ucontext) {
-        mcontext_t *mcontext = &ucontext->uc_mcontext;
-        mcontext->gregs[REG_R15] = gpr_state->r15;
-        mcontext->gregs[REG_R14] = gpr_state->r14;
-        mcontext->gregs[REG_R13] = gpr_state->r13;
-        mcontext->gregs[REG_R12] = gpr_state->r12;
-        mcontext->gregs[REG_R11] = gpr_state->r11;
-        mcontext->gregs[REG_R10] = gpr_state->r10;
-        mcontext->gregs[REG_R9] = gpr_state->r9;
-        mcontext->gregs[REG_R8] = gpr_state->r8;
-        mcontext->gregs[REG_RBP] = gpr_state->rbp;
-        mcontext->gregs[REG_RDI] = gpr_state->rdi;
-        mcontext->gregs[REG_RSI] = gpr_state->rsi;
-        mcontext->gregs[REG_RDX] = gpr_state->rdx;
-        mcontext->gregs[REG_RCX] = gpr_state->rcx;
-        mcontext->gregs[REG_RBX] = gpr_state->rbx;
-        mcontext->gregs[REG_RAX] = gpr_state->rax;
-        mcontext->gregs[REG_RIP] = gpr_state->rip;
-        mcontext->gregs[REG_RSP] = gpr_state->rsp;
-        mcontext->gregs[REG_EFL] = gpr_state->rflags;
-        memcpy(mcontext->fpregs, extended_state, cpu::extended_state_size);
+    void to_ucontext(const cpu::InterruptState *gpr_state, void *extended_state, KernelUContext *ucontext) {
+        sigcontext *mcontext = &ucontext->uc_mcontext;
+        mcontext->r15 = gpr_state->r15;
+        mcontext->r14 = gpr_state->r14;
+        mcontext->r13 = gpr_state->r13;
+        mcontext->r12 = gpr_state->r12;
+        mcontext->r11 = gpr_state->r11;
+        mcontext->r10 = gpr_state->r10;
+        mcontext->r9 = gpr_state->r9;
+        mcontext->r8 = gpr_state->r8;
+        mcontext->rbp = gpr_state->rbp;
+        mcontext->rdi = gpr_state->rdi;
+        mcontext->rsi = gpr_state->rsi;
+        mcontext->rdx = gpr_state->rdx;
+        mcontext->rcx = gpr_state->rcx;
+        mcontext->rbx = gpr_state->rbx;
+        mcontext->rax = gpr_state->rax;
+        mcontext->rip = gpr_state->rip;
+        mcontext->rsp = gpr_state->rsp;
+        mcontext->eflags = gpr_state->rflags;
+        memcpy(mcontext->fpstate, extended_state, cpu::extended_state_size);
     }
 }

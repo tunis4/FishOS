@@ -14,13 +14,16 @@ namespace sched {
             Thread *thread;
             Event *event;
             int which;
+
+            Listener(Thread *thread, Event *event, int which);
         };
 
         klib::Spinlock lock;
         int pending = 0, num_listeners = 0;
         klib::ListHead listener_list_head;
+        const char *debug_name;
 
-        Event() {
+        Event(const char *debug_name) : debug_name(debug_name) {
             listener_list_head.init();
         }
 

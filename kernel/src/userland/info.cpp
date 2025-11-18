@@ -1,5 +1,6 @@
 #include <userland/info.hpp>
 #include <sched/time.hpp>
+#include <sched/sched.hpp>
 #include <mem/pmm.hpp>
 #include <klib/cstring.hpp>
 #include <cpu/syscall/syscall.hpp>
@@ -7,11 +8,22 @@
 namespace userland {
     isize syscall_uname(struct utsname *buf) {
         log_syscall("uname(%#lX)\n", (uptr)buf);
-        klib::strncpy(buf->sysname, "FishOS", sizeof(buf->sysname));
+        sched::Thread *thread = cpu::get_current_thread();
+        bool fake_linux = true;
+        if (klib::strcmp(thread->name, "uname") == 0 || klib::strcmp(thread->name, "fastfetch") == 0)
+            fake_linux = false;
+        if (fake_linux) {
+            klib::strncpy(buf->sysname, "Linux", sizeof(buf->sysname));
+            klib::strncpy(buf->release, "3.0.1-fishix", sizeof(buf->release));
+            klib::strncpy(buf->version, "#1 SMP PREEMPT_DYNAMIC " __DATE__ " " __TIME__, sizeof(buf->version));
+        } else {
+            klib::strncpy(buf->sysname, "Fishix", sizeof(buf->sysname));
+            klib::strncpy(buf->release, "1.0.0", sizeof(buf->release));
+            klib::strncpy(buf->version, __DATE__ " " __TIME__, sizeof(buf->version));
+        }
         klib::strncpy(buf->nodename, "fishpc", sizeof(buf->nodename));
-        klib::strncpy(buf->release, "0.0.1", sizeof(buf->release));
-        klib::strncpy(buf->version, __DATE__ " " __TIME__, sizeof(buf->version));
         klib::strncpy(buf->machine, "x86_64", sizeof(buf->machine));
+        klib::strncpy(buf->domainname, "(none)", sizeof(buf->domainname));
         return 0;
     }
 

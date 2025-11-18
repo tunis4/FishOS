@@ -1,0 +1,39 @@
+#! /bin/bash
+
+# extremely hacky script because i dont have runit working properly yet
+
+startwm() {
+    sleep 2
+
+    export HOME="/root"
+    export XDG_SESSION_TYPE="x11"
+    export XDG_CONFIG_DIRS="/etc/xdg"
+    export XDG_RUNTIME_DIR="/run/user/0"
+    export NO_AT_BRIDGE=1
+
+    { sleep 10; cat /var/log/everything/current; } &
+
+    mkdir -p $HOME/.config/dconf
+    mkdir -p /run/dbus
+    mkdir -p /var/lib/dbus
+    mkdir -p $XDG_RUNTIME_DIR
+
+    metalog -N -B
+
+    glib-compile-schemas /usr/share/glib-2.0/schemas/ >/dev/null
+    gio-querymodules /usr/lib/gio/modules/ >/dev/null
+    gdk-pixbuf-query-loaders --update-cache >/dev/null
+    gtk-query-immodules-3.0 --update-cache >/dev/null
+    update-mime-database /usr/share/mime
+
+    dbus-daemon --system
+    dbus-uuidgen --ensure
+
+    startx -- -dumbSched
+}
+
+if [[ $1 == "--startwm" ]]; then
+    startwm &
+fi
+
+exec /usr/bin/init

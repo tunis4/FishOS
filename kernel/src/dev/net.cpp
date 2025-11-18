@@ -1,3 +1,6 @@
+// This file uses code from the Astral project
+// See NOTICE.md for the license of Astral
+
 #include <dev/net.hpp>
 #include <mem/pmm.hpp>
 #include <klib/cstdlib.hpp>
@@ -12,8 +15,7 @@ namespace net {
     static klib::Spinlock routing_table_lock;
 
     Route lookup_route(Ipv4 ip) {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(routing_table_lock);
+        klib::SpinlockGuard guard(routing_table_lock);
 
         Route chosen;
         for (Route &route : routing_table) {
@@ -26,8 +28,7 @@ namespace net {
     }
 
     void add_route(Route route) {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(routing_table_lock);
+        klib::SpinlockGuard guard(routing_table_lock);
         routing_table.push_back(route);
     }
 
@@ -245,7 +246,7 @@ namespace net {
         if (page == nullptr)
             return {};
         return Packet {
-            .addr = mem::hhdm + page->pfn * 0x1000,
+            .addr = mem::hhdm + page->phy(),
             .size = sizeof(EthHeader) + requested_size,
             .offset = sizeof(EthHeader)
         };

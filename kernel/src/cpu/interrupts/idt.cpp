@@ -74,11 +74,6 @@ namespace cpu::interrupts {
         "Security"
     };
 
-    struct StackFrame {
-        StackFrame *next;
-        uptr ip;
-    };
-
     static void exception_handler(void *priv, InterruptState *state) {
         u8 vec = (u64)priv;
         const char *err_name = vec < 31 ? exception_strings[vec] : "Not an exception";
@@ -89,9 +84,10 @@ namespace cpu::interrupts {
             if (vec == 0 || vec == 19) signal = SIGFPE;
             else if (vec == 6) signal = SIGILL;
             else if (vec == 13) signal = SIGBUS;
+            else if (vec != 14) klib::printf("cpu: unexpected exception %#X in user mode, sending SIGSEGV\n", vec);
 
             thread->send_signal(signal);
-            
+
             memcpy(&thread->gpr_state, state, sizeof(cpu::InterruptState));
             if (thread->extended_state)
                 cpu::save_extended_state(thread->extended_state);
@@ -132,7 +128,10 @@ namespace cpu::interrupts {
 
     static void page_fault_handler(void *priv, InterruptState *state) {
         u64 cr2 = cpu::read_cr2();
-        if (mem::vmm->active_pagemap->handle_page_fault(cr2) < 0)
+        auto *pagemap = mem::vmm->active_pagemap;
+        if (cr2 >= 0xFFFF800000000000)
+            pagemap = &mem::vmm->kernel_pagemap;
+        if (pagemap->handle_page_fault(cr2) < 0)
             exception_handler(priv, state);
     }
 

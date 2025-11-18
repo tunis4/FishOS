@@ -264,7 +264,7 @@ namespace klib {
     template<typename A>
     A::result_type sync(A &&awaitable) {
         auto task = make_sync_wait_task(forward<A>(awaitable));
-        sched::Event event;
+        sched::Event event("sync event");
         task.start(&event);
         event.wait();
         if constexpr (!is_same<typename A::result_type, void>)

@@ -23,6 +23,9 @@ namespace socket {
         LocalDatagramSocket();
         ~LocalDatagramSocket();
 
+        isize poll(vfs::FileDescription *fd, isize events) override;
+        isize ioctl(vfs::FileDescription *fd, usize cmd, void *arg) override;
+
         isize bind(vfs::FileDescription *fd, const sockaddr *addr_ptr, socklen_t addr_length) override;
         isize connect(vfs::FileDescription *fd, const sockaddr *addr_ptr, socklen_t addr_length) override;
         isize listen(vfs::FileDescription *fd, int backlog) override { return -EOPNOTSUPP; }
@@ -34,7 +37,5 @@ namespace socket {
         isize setsockopt(vfs::FileDescription *fd, int layer, int number, const void *buffer, socklen_t size) override;
         isize getsockname(vfs::FileDescription *fd, sockaddr *addr_ptr, socklen_t *addr_length) override;
         isize getpeername(vfs::FileDescription *fd, sockaddr *addr_ptr, socklen_t *addr_length) override;
-
-        isize poll(vfs::FileDescription *fd, isize events) override;
     };
 }

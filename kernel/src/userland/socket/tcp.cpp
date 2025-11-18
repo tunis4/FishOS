@@ -8,8 +8,7 @@ namespace socket {
     static klib::Spinlock port_table_lock;
 
     isize TcpSocket::alloc_port(u16 chosen) {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(port_table_lock);
+        klib::SpinlockGuard guard(port_table_lock);
         if (chosen == 0) {
             for (u16 i = PORT_ALLOC_RANGE_START; i < PORT_ALLOC_RANGE_END; i++) {
                 if (port_table[i] == nullptr) {
@@ -26,8 +25,7 @@ namespace socket {
 
     void TcpSocket::free_port() {
         if (has_port) {
-            klib::InterruptLock interrupt_guard;
-            klib::LockGuard guard(port_table_lock);
+            klib::SpinlockGuard guard(port_table_lock);
             port_table[bound_address.port] = nullptr;
             bound_address.port = 0;
             has_port = false;
@@ -44,8 +42,7 @@ namespace socket {
 
         TcpSocket *target_socket = nullptr;
         {
-            klib::InterruptLock interrupt_guard;
-            klib::LockGuard guard(port_table_lock);
+            klib::SpinlockGuard guard(port_table_lock);
             target_socket = port_table[header->dst_port];
         }
         if (!target_socket)
@@ -72,7 +69,7 @@ namespace socket {
         return datagram;
     }
 
-    TcpSocket::TcpSocket() {
+    TcpSocket::TcpSocket() : socket_event("TcpSocket::socket_event") {
         socket_family = AF_INET;
         socket_type = SOCK_DGRAM;
         event = &socket_event;
@@ -137,6 +134,7 @@ namespace socket {
         usize transferred = 0;
         for (usize i = 0; i < hdr->msg_iovlen; i++) {
             struct iovec *iov = &hdr->msg_iov[i];
+            if (iov->iov_len == 0) continue;
             transferred += recv_ring_buffer->read((u8*)iov->iov_base, iov->iov_len);
             if (recv_ring_buffer->is_empty())
                 break;
@@ -178,6 +176,7 @@ namespace socket {
         usize transferred = 0;
         for (usize i = 0; i < hdr->msg_iovlen; i++) {
             struct iovec *iov = &hdr->msg_iov[i];
+            if (iov->iov_len == 0) continue;
             transferred += send_ring_buffer->write((u8*)iov->iov_base, iov->iov_len);
             if (send_ring_buffer->is_full())
                 break;

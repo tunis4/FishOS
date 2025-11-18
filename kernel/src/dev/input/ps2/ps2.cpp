@@ -1,40 +1,43 @@
+// This file uses code from the Astral project
+// See NOTICE.md for the license of Astral
+
 #include <dev/input/ps2/ps2.hpp>
 #include <sched/timer/hpet.hpp>
 #include <klib/cstdio.hpp>
 
 namespace dev::input::ps2 {
-    static bool device_reset_self_test(int port) {
-        // if (!device_command_check(port, DEVICE_CMD_DISABLE_SCANNING)) {
-        //     klib::printf("PS/2: Failed to disable scanning before resetting port %d\n", port);
-        //     return false;
-        // }
-        flush_out_buffer();
-        device_command(port, DEVICE_CMD_RESET_SELF_TEST);
+    // static bool device_reset_self_test(int port) {
+    //     // if (!device_command_check(port, DEVICE_CMD_DISABLE_SCANNING)) {
+    //     //     klib::printf("PS/2: Failed to disable scanning before resetting port %d\n", port);
+    //     //     return false;
+    //     // }
+    //     flush_out_buffer();
+    //     device_command(port, DEVICE_CMD_RESET_SELF_TEST);
 
-        int resends = 0;
-        while (true) {
-            u8 result = read_data();
-            // klib::printf("PS/2: Reset self test: read %#X\n", (u32)result);
-            if (result == RESEND) {
-                if (resends > 10) {
-                    klib::printf("PS/2: Too many resends for reset self test\n");
-                    return false;
-                }
-                device_command(port, DEVICE_CMD_RESET_SELF_TEST);
-                resends++;
-                continue;
-            }
-            if (result == DEVICE_SELF_TEST_OK)
-                break;
-            if (result == DEVICE_SELF_TEST_FAIL) {
-                klib::printf("PS/2: Self test failed\n");
-                return false;
-            }
-        }
+    //     int resends = 0;
+    //     while (true) {
+    //         u8 result = read_data();
+    //         // klib::printf("PS/2: Reset self test: read %#X\n", (u32)result);
+    //         if (result == RESEND) {
+    //             if (resends > 10) {
+    //                 klib::printf("PS/2: Too many resends for reset self test\n");
+    //                 return false;
+    //             }
+    //             device_command(port, DEVICE_CMD_RESET_SELF_TEST);
+    //             resends++;
+    //             continue;
+    //         }
+    //         if (result == DEVICE_SELF_TEST_OK)
+    //             break;
+    //         if (result == DEVICE_SELF_TEST_FAIL) {
+    //             klib::printf("PS/2: Self test failed\n");
+    //             return false;
+    //         }
+    //     }
     
-        flush_out_buffer();
-        return true;
-    }
+    //     flush_out_buffer();
+    //     return true;
+    // }
 
     void init() {
         write_command(CTRL_CMD_DISABLE_P1);
@@ -132,7 +135,7 @@ namespace dev::input::ps2 {
     void flush_out_buffer() {
         u8 status;
         while ((status = cpu::in<u8>(PORT_STATUS)) & (1|2))
-            if (status & 2) cpu::in<u8>(PORT_DATA);
+            cpu::in<u8>(PORT_DATA);
     }
 
     int write_command(u8 cmd) {

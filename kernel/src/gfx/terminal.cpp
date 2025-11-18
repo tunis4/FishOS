@@ -37,13 +37,13 @@ namespace gfx {
         rgb(229, 229, 229)  // Bright White
     };
 
-    static constexpr u32 default_fg_color = 0xFCFCFC;
-    static constexpr u32 default_bg_color = rgb(24, 24, 24);
+    static constexpr u32 default_fg_color = color_table[15]; // rgb(252, 252, 252);
+    static constexpr u32 default_bg_color = color_table[0]; // rgb( 24,  24,  24);
 
     bool kernel_terminal_enabled = false;
 
-    TerminalEmulator& kernel_terminal() {
-        static TerminalEmulator term(&gfx::main_framebuffer);
+    VirtualTerminal& kernel_terminal() {
+        static VirtualTerminal term(&gfx::main_framebuffer);
         return term;
     }
 
@@ -71,33 +71,32 @@ namespace gfx {
         return -1;
     }
 
-    void TerminalEmulator::draw_char_at(usize c_x, usize c_y, char c, u32 fg, u32 bg) {
+    void VirtualTerminal::draw_char_at(usize c_x, usize c_y, char c, u32 fg, u32 bg) {
         Font *font = &regular_font;
         if (fg & bold_flag)
             font = &bold_font;
-        draw_psf_char(font, c, c_x, c_y, actual_x, actual_y, fg & 0xFFFFFF, bg);
+        draw_psf_char(font, c, c_x, c_y, pixel_x, pixel_y, fg & 0xFFFFFF, bg);
     }
 
-    void TerminalEmulator::set_char_at(usize c_x, usize c_y, char c, u32 fg, u32 bg) {
+    void VirtualTerminal::set_char_at(usize c_x, usize c_y, char c, u32 fg, u32 bg) {
         usize index = c_y * width_chars + c_x;
-        if (text_buffer[index] == c && fg_color_buffer[index] == fg && bg_color_buffer[index] == bg)
+        ColoredChar colored_char(c, fg, bg);
+        if (buffer[index] == colored_char)
             return;
-        text_buffer[index] = c;
-        fg_color_buffer[index] = fg;
-        bg_color_buffer[index] = bg;
+        buffer[index] = colored_char;
         draw_char_at(c_x, c_y, c, fg, bg);
         cursor_needs_undrawing = false;
     }
 
-    void TerminalEmulator::set_char_at_cursor(char c) {
+    void VirtualTerminal::set_char_at_cursor(char c) {
         set_char_at(cursor_x, cursor_y, c, current_fg | (is_bold ? bold_flag : 0), current_bg);
     }
 
-    void TerminalEmulator::scroll() {
+    void VirtualTerminal::scroll() {
         for (int y = 0; y < height_chars - 1; y++) {
             for (int x = 0; x < width_chars; x++) {
-                usize index = (y + 1) * width_chars + x;
-                set_char_at(x, y, text_buffer[index], fg_color_buffer[index], bg_color_buffer[index]);
+                ColoredChar c = buffer[(y + 1) * width_chars + x];
+                set_char_at(x, y, c.c(), c.fg(), c.bg());
             }
         }
 
@@ -107,21 +106,21 @@ namespace gfx {
         cursor_needs_undrawing = true;
     }
 
-    void TerminalEmulator::redraw_cursor() {
+    void VirtualTerminal::redraw_cursor() {
         if (cursor_needs_undrawing) {
             gfx::main_framebuffer.fill_rect(
-                old_cursor_x * font_width + actual_x, 
-                old_cursor_y * font_height + actual_y, 
+                old_cursor_x * font_width + pixel_x, 
+                old_cursor_y * font_height + pixel_y, 
                 1, font_height, current_bg
             );
 
-            usize index = old_cursor_y * width_chars + old_cursor_x;
-            draw_char_at(old_cursor_x, old_cursor_y, text_buffer[index], fg_color_buffer[index], bg_color_buffer[index]);
+            ColoredChar c = buffer[old_cursor_y * width_chars + old_cursor_x];
+            draw_char_at(old_cursor_x, old_cursor_y, c.c(), c.fg(), c.bg());
         }
         
         gfx::main_framebuffer.fill_rect(
-            cursor_x * font_width + actual_x,
-            cursor_y * font_height + actual_y,
+            cursor_x * font_width + pixel_x,
+            cursor_y * font_height + pixel_y,
             1, font_height, current_fg
         );
 
@@ -129,82 +128,71 @@ namespace gfx {
         old_cursor_y = cursor_y;
     }
 
-    void TerminalEmulator::move_cursor(int x, int y) {
+    void VirtualTerminal::move_cursor(int x, int y) {
         cursor_x = x;
         cursor_y = y;
         cursor_needs_undrawing = true;
         redraw_cursor();
     }
 
-    TerminalEmulator::TerminalEmulator(Framebuffer *fb) {
+    VirtualTerminal::VirtualTerminal(Framebuffer *fb) {
         framebuffer = fb;
 
         regular_font.init(_binary_ter_u16n_psf_start);
         bold_font.init(_binary_ter_u16b_psf_start);
 
-        terminal_x = 0;
-        terminal_y = 0;
-        terminal_width = framebuffer->width;
-        terminal_height = framebuffer->height;
-
-        padding_top = 4;
-        padding_bottom = 4;
-        padding_left = 4;
-        padding_right = 4;
-
-        actual_width = terminal_width - padding_left - padding_right;
-        actual_height = terminal_height - padding_top - padding_bottom;
-        actual_x = terminal_x + padding_left;
-        actual_y = terminal_y + padding_top;
+        pixel_x = 0;
+        pixel_y = 0;
+        pixel_width = framebuffer->width;
+        pixel_height = framebuffer->height;
 
         current_fg = default_fg_color;
         current_bg = default_bg_color;
-        border = 0x232627;
 
-        font_width = 8;
-        font_height = 16;
+        font_width = regular_font.width;
+        font_height = regular_font.height;
 
-        width_chars = actual_width / font_width;
-        height_chars = actual_height / font_height;
+        width_chars = pixel_width / font_width;
+        height_chars = pixel_height / font_height;
 
         usize buffer_size = width_chars * height_chars;
-        text_buffer = new char[buffer_size];
-        fg_color_buffer = new u32[buffer_size];
-        bg_color_buffer = new u32[buffer_size];
-        for (usize i = 0; i < buffer_size; i++) {
-            text_buffer[i] = ' ';
-            fg_color_buffer[i] = default_fg_color;
-            bg_color_buffer[i] = default_bg_color;
-        }
+        buffer = new ColoredChar[buffer_size];
+        for (usize i = 0; i < buffer_size; i++)
+            buffer[i] = ColoredChar(' ', default_fg_color, default_bg_color);
 
         cursor_x = 0;
         cursor_y = 0;
 
-        framebuffer->fill_rect(actual_x, actual_y, actual_width, actual_height, current_bg);
+        redraw();
+    }
 
-        // draw the border
-        framebuffer->fill_rect(terminal_x, terminal_y, terminal_width, padding_top, border);
-        framebuffer->fill_rect(terminal_x, terminal_height - padding_bottom, terminal_width, padding_bottom, border);
-        framebuffer->fill_rect(terminal_x, padding_top, padding_left, actual_height, border);
-        framebuffer->fill_rect(terminal_width - padding_right, padding_top, padding_right, actual_height, border);
+    VirtualTerminal::~VirtualTerminal() {
+        delete[] buffer;
+    }
+
+    void VirtualTerminal::redraw() {
+        klib::SpinlockGuard guard(lock);
+
+        framebuffer->fill_rect(pixel_x, pixel_y, pixel_width, pixel_height, current_bg);
 
         redraw_cursor();
-    }
 
-    TerminalEmulator::~TerminalEmulator() {
-        delete[] text_buffer;
-        delete[] fg_color_buffer;
-        delete[] bg_color_buffer;
+        for (int y = 0; y < height_chars; y++) {
+            for (int x = 0; x < width_chars; x++) {
+                ColoredChar c = buffer[y * width_chars + x];
+                set_char_at(x, y, c.c(), c.fg(), c.bg());
+            }
+        }
     }
     
-    void TerminalEmulator::reset_control_sequence() {
+    void VirtualTerminal::reset_control_sequence() {
         csi_progress = 0;
         csi_arg_index = 0;
         memset(csi_args, 0, sizeof(csi_args));
         csi_question_mark = false;
     }
     
-    void TerminalEmulator::apply_control_sequence(char code) {
+    void VirtualTerminal::apply_control_sequence(char code) {
         if (code == 'm') {
             for (int i = 0; i < csi_arg_index + 1; i++) {
                 int n = csi_args[i];
@@ -286,9 +274,8 @@ namespace gfx {
         }
     }
 
-    void TerminalEmulator::write_char(char c) {
-        klib::InterruptLock interrupt_guard;
-        klib::LockGuard guard(lock);
+    void VirtualTerminal::write_char(char c) {
+        klib::SpinlockGuard guard(lock);
 
         if (csi_progress == 1) {
             if (c == '[')
@@ -361,7 +348,7 @@ namespace gfx {
 
     // taken from wiki.osdev.org
     // c is a unicode character, cx and cy are cursor position in characters, offx and offy are offsets in pixels
-    void TerminalEmulator::draw_psf_char(Font *font, u32 c, u16 cx, u16 cy, u16 offx, u16 offy, u32 fg, u32 bg) {
+    void VirtualTerminal::draw_psf_char(Font *font, u32 c, u16 cx, u16 cy, u16 offx, u16 offy, u32 fg, u32 bg) {
         u32 bytes_per_line = (font->width + 7) / 8;
         u8 *glyph = font->data + (c < font->num_glyph ? c : 0) * font->bytes_per_glyph;
         u64 where = ((cy * font->height + offy) * framebuffer->pitch) + ((cx * font->width + offx) * 4);

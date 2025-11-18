@@ -1,11 +1,10 @@
 #pragma once
 
+#include <dev/input/input.hpp>
 #include <dev/devnode.hpp>
 #include <dev/tty/tty.hpp>
-#include <dev/input/input.hpp>
 #include <gfx/terminal.hpp>
 #include <klib/cstdio.hpp>
-#include <termios.h>
 
 namespace dev::tty {
     struct ConsoleDevNode final : public CharDevNode, public Terminal {

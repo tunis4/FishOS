@@ -4,12 +4,13 @@
 
 extern "C" {
     uptr __stack_chk_guard = 0xED1A449A97A8154E;
-    [[noreturn]] void __stack_chk_fail() {
+    void __stack_chk_fail() {
         panic("Stack smashing detected");
     }
 }
 
 static klib::Spinlock static_init_lock;
+static bool static_init_old_interrupt_state;
 
 using __guard = u64;
 #define GUARD_INITIALIZED (1 << 0)
@@ -19,9 +20,13 @@ namespace __cxxabiv1  {
     extern "C" i32 __cxa_guard_acquire(__guard *g) {
         if (*g)
             return 0;
+
+        static_init_old_interrupt_state = cpu::get_interrupt_state();
+        cpu::toggle_interrupts(false);
         static_init_lock.lock();
         if (*g & GUARD_INITIALIZED) {
             static_init_lock.unlock();
+            cpu::toggle_interrupts(static_init_old_interrupt_state);
             return 0;
         }
 
@@ -35,6 +40,7 @@ namespace __cxxabiv1  {
     extern "C" void __cxa_guard_release(__guard *g) {
         *g |= GUARD_INITIALIZED;
         static_init_lock.unlock();
+        cpu::toggle_interrupts(static_init_old_interrupt_state);
     }
 
     extern "C" void __cxa_guard_abort(__guard *g) {

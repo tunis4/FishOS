@@ -6,7 +6,9 @@ namespace dev::tty {
     constexpr usize PTY_MAX = 256;
     static klib::Bitmap<PTY_MAX> pty_bitmap;
 
-    PseudoTerminalEnd::PseudoTerminalEnd(Terminal *terminal, bool slave) : terminal(terminal), slave(slave) {
+    PseudoTerminalEnd::PseudoTerminalEnd(Terminal *terminal, bool slave)
+        : terminal(terminal), pty_event("PseudoTerminalEnd::pty_event"), slave(slave)
+    {
         event = &pty_event;
         if (slave) {
             for (usize i = 0; i < PTY_MAX; i++) {
@@ -113,11 +115,25 @@ namespace dev::tty {
     }
 
     isize PseudoTerminalMultiplexer::open(vfs::FileDescription *fd) {
+        sched::Thread *thread = cpu::get_current_thread();
+        isize err = 0;
+
         Terminal *terminal = new Terminal();
         PseudoTerminalEnd *master = new PseudoTerminalEnd(terminal, false);
         PseudoTerminalEnd *slave = new PseudoTerminalEnd(terminal, true);
+
+        defer {
+            if (err < 0) {
+                delete terminal;
+                delete master;
+                delete slave;
+            }
+        };
+
         master->peer = slave;
         slave->peer = master;
+        if (slave->pts_num == -1)
+            return err = -ENOENT;
         master->pts_num = slave->pts_num;
 
         char pts_path[64];
@@ -125,11 +141,11 @@ namespace dev::tty {
 
         vfs::Entry *entry = vfs::path_to_entry(pts_path);
         if (entry->vnode != nullptr)
-            return -EEXIST;
+            return err = -EEXIST;
         if (entry->parent == nullptr)
-            return -ENOENT;
+            return err = -ENOENT;
         entry->vnode = slave;
-        entry->create(vfs::NodeType::CHAR_DEVICE);
+        entry->create(vfs::NodeType::CHAR_DEVICE, thread->cred.uids.eid, thread->cred.gids.eid, 0600);
 
         fd->vnode = master;
         terminal->on_open(fd);
