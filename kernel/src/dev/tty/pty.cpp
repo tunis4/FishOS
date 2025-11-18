@@ -56,12 +56,12 @@ namespace dev::tty {
             usize i;
             bool end = false;
             for (i = 0; i < count; i++) {
-                if (end)
-                    break;
                 terminal->process_output_char(((const char*)buf)[i], [&] (char c) {
                     if (peer->ring_buffer.write(&c, 1) == 0)
                         end = true;
                 });
+                if (end)
+                    break;
             }
             peer->pty_event.trigger();
             return i;
@@ -69,14 +69,14 @@ namespace dev::tty {
             usize i;
             bool end = false;
             for (i = 0; i < count; i++) {
-                if (end)
-                    break;
                 terminal->process_input_char(((const char*)buf)[i], [&] (char c) {
                     if (peer->ring_buffer.write(&c, 1) == 0)
                         end = true;
                 }, [&] (char c) {
                     ring_buffer.write(&c, 1);
                 });
+                if (end)
+                    break;
             }
             peer->pty_event.trigger();
             return i;
