@@ -7,7 +7,7 @@
 
 #if SYSCALL_TRACE
 #include <klib/cstdio.hpp>
-#define log_syscall(format, ...) cpu::syscall::log_syscall_impl(format __VA_OPT__(,) __VA_ARGS__);
+#define log_syscall(format, ...) cpu::syscall::log_syscall_impl(format __VA_OPT__(,) __VA_ARGS__)
 #else
 #define log_syscall(format, ...)
 #endif

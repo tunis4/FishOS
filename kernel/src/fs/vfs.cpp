@@ -595,7 +595,7 @@ namespace vfs {
             return -ENOENT;
         if (entry->vnode->node_type == NodeType::DIRECTORY && !(flags & AT_REMOVEDIR))
             return -EISDIR;
-        entry->remove();
+        entry->remove(); // FIXME: AT_REMOVEDIR should check if the directory has children
         return 0;
     }
 

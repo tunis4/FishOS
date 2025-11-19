@@ -16,10 +16,8 @@ namespace klib {
     extern klib::Spinlock print_lock;
 
     struct PrintGuard {
-        InterruptLock interrupt_guard;
         SpinlockGuard<Spinlock> lock_guard;
-
-        PrintGuard() : interrupt_guard(), lock_guard(print_lock) {}
+        PrintGuard() : lock_guard(print_lock) {}
     };
 
     template<typename F> concept Putchar = requires(F f) { f(' '); };

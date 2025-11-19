@@ -10,9 +10,10 @@ namespace klib {
 
         static TimeSpec from_seconds(u64 s) { return TimeSpec(s, 0); }
         static TimeSpec from_microseconds(u64 µs) { return TimeSpec(µs / 1'000'000, (µs % 1'000'000) * 1'000); }
+        static TimeSpec from_timeval(timeval v) { return TimeSpec(v.tv_sec, v.tv_usec * 1'000); }
 
         struct timespec to_posix() const { return { .tv_sec = seconds, .tv_nsec = nanoseconds }; }
-        struct timeval to_timeval() const { return { .tv_sec = seconds, .tv_usec = nanoseconds / 1000 }; }
+        struct timeval to_timeval() const { return { .tv_sec = seconds, .tv_usec = nanoseconds / 1'000 }; }
 
         bool is_zero() const {
             return seconds == 0 && nanoseconds == 0;

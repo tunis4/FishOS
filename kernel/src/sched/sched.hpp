@@ -8,6 +8,7 @@
 #include <fs/vfs.hpp>
 #include <sched/event.hpp>
 #include <sched/context.hpp>
+#include <sched/time.hpp>
 #include <userland/signal.hpp>
 #include <userland/cred.hpp>
 #include <cpu/syscall/syscall.hpp>
@@ -46,7 +47,6 @@ namespace sched {
         u64 signal_mask = 0;
         u64 pending_signals = 0;
         int enqueued_by_signal = -1;
-        int executing_signal = -1;
         bool entering_signal = false, exiting_signal = false;
         SignalFrame *signal_frame = nullptr; // only valid when exiting signal
         u64 poll_saved_signal_mask = 0; // only valid when poll is called with a signal mask
@@ -142,6 +142,8 @@ namespace sched {
 
         userland::KernelSigaction signal_actions[64];
 
+        Timer itimer_real;
+
         ProcessGroup *group = nullptr;
         klib::ListHead group_link;
 
@@ -159,6 +161,7 @@ namespace sched {
         int allocate_fdnum(int min_fdnum = 0);
         void set_parent(Process *new_parent);
         void zombify(int terminate_signal);
+        void send_signal(int signal);
 
         void print_file_descriptors();
     };

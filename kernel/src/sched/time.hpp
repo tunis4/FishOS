@@ -4,12 +4,14 @@
 #include <klib/timespec.hpp>
 #include <klib/list.hpp>
 #include <limine.hpp>
+#include <sys/time.h>
 
 namespace sched {
     struct Timer {
         using Callback = void(void*);
 
-        klib::TimeSpec remaining;
+        klib::TimeSpec remaining = {};
+        klib::TimeSpec interval = {}; // if this is set, event and fired are unused, only callback is called
         Event event;
         klib::ListHead armed_timers_link;
         Callback *callback = nullptr;
@@ -17,6 +19,7 @@ namespace sched {
         bool fired = false;
 
         Timer() : event("Timer::event") {}
+        ~Timer() { disarm(); }
 
         void arm(const klib::TimeSpec &time, Callback *callback = nullptr, void *callback_data = nullptr);
         void disarm();
@@ -33,4 +36,7 @@ namespace sched {
     isize syscall_clock_getres(clockid_t clock_id, klib::TimeSpec *res);
     isize syscall_nanosleep(const klib::TimeSpec *duration, klib::TimeSpec *remaining);
     isize syscall_clock_nanosleep(clockid_t clock_id, int flags, const klib::TimeSpec *duration, klib::TimeSpec *remaining);
+    isize syscall_getitimer(int which, itimerval *curr_value);
+    isize syscall_setitimer(int which, const itimerval *new_value, itimerval *old_value);
+    isize syscall_alarm(uint seconds);
 }

@@ -171,7 +171,7 @@ namespace sched {
         Process *target;
         LIST_FOR_EACH(target, &process_list, group_link) {
             ASSERT(target->group == this);
-            target->get_main_thread()->send_signal(signal);
+            target->send_signal(signal);
         }
     }
 
@@ -207,7 +207,12 @@ namespace sched {
         delete pagemap;
 
         zombie_event.trigger();
-        parent->get_main_thread()->send_signal(SIGCHLD);
+        parent->send_signal(SIGCHLD);
+    }
+
+    // FIXME: send to any thread that has the signal unblocked
+    void Process::send_signal(int signal) {
+        return get_main_thread()->send_signal(signal);
     }
 
     void Process::print_file_descriptors() {
@@ -600,7 +605,7 @@ namespace sched {
             thread->process->wait_code = CLD_STOPPED;
             thread->process->stopped_event.trigger();
             if (!(thread->process->parent->signal_actions[SIGCHLD].flags & SA_NOCLDSTOP))
-                thread->process->parent->get_main_thread()->send_signal(SIGCHLD);
+                thread->process->parent->send_signal(SIGCHLD);
         } else {
             thread->state = Thread::BLOCKED;
         }

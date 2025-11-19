@@ -169,8 +169,6 @@ namespace userland {
         thread->signal_mask |= action->mask;
         if (!(action->flags & SA_NODEFER))
             thread->signal_mask |= get_signal_bit(signal);
-
-        thread->executing_signal = signal;
     }
 
     void return_from_signal(sched::Thread *thread) {
@@ -193,8 +191,6 @@ namespace userland {
         cpu::toggle_interrupts(false); // will remain disabled until sysret
         ASSERT(!thread->entering_signal);
         ASSERT(!thread->exiting_signal);
-        ASSERT(thread->executing_signal != -1);
-        thread->executing_signal = -1;
         thread->exiting_signal = true;
         SignalFrame *frame = (SignalFrame*)(cpu::get_current_cpu()->user_stack - 8);
         thread->signal_frame = frame;
