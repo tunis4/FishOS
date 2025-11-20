@@ -325,8 +325,16 @@ namespace vfs {
         return 0;
     }
 
+    static void seek_to_end_if_append(FileDescription *description) {
+        if (description->flags & O_APPEND) {
+            isize ret = description->vnode->seek(description, description->cursor, 0, SEEK_END);
+            if (ret >= 0)
+                description->cursor = ret;
+        }
+    }
+
     static isize openat_impl(int dirfd, const char *path, int flags, mode_t mode) {
-        if (int unsupported_flags = (flags & ~(O_ACCMODE | O_CREAT | O_EXCL | O_DIRECTORY | O_CLOEXEC | O_NONBLOCK | O_TRUNC | O_NOCTTY | O_NOFOLLOW)))
+        if (int unsupported_flags = (flags & ~(O_ACCMODE | O_CREAT | O_EXCL | O_DIRECTORY | O_CLOEXEC | O_NONBLOCK | O_TRUNC | O_NOCTTY | O_NOFOLLOW | O_APPEND)))
             klib::printf("openat: unsupported flags %#o\n", unsupported_flags);
 
         sched::Thread *thread = cpu::get_current_thread();
@@ -474,6 +482,7 @@ namespace vfs {
         log_syscall("write(%d, %#lX, %ld)\n", fd, (uptr)buf, count);
         FileDescription *description = get_file_description(fd);
         if (!description) return -EBADF;
+        seek_to_end_if_append(description);
         isize ret = description->vnode->write(description, buf, count, description->cursor);
         if (ret < 0) return ret;
         description->cursor += ret;
@@ -508,6 +517,7 @@ namespace vfs {
         log_syscall("writev(%d, %#lX, %d)\n", fd, (uptr)iovs, iovc);
         FileDescription *description = get_file_description(fd);
         if (!description) return -EBADF;
+        seek_to_end_if_append(description);
         isize ret = description->vnode->writev(description, iovs, iovc, description->cursor);
         if (ret < 0) return ret;
         description->cursor += ret;
