@@ -1044,7 +1044,7 @@ namespace sched {
                 target_children.push_back(child);
                 events.push_back(&child->zombie_event);
             }
-            if (options & WUNTRACED) {
+            if (options & WSTOPPED) {
                 target_children.push_back(child);
                 events.push_back(&child->stopped_event);
             }
@@ -1103,6 +1103,8 @@ namespace sched {
                 if (!(options & WNOWAIT)) {
                     if (target_child->is_zombie)
                         delete target_child;
+                    else
+                        target_child->wait_code = 0;
                 }
 
                 return child_pid;
