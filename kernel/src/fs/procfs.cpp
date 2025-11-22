@@ -14,6 +14,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#define ARG_MAX 131072
+
 #define info_node_put [self] (char c) { self->print_char(c); }
 #define info_node_printf(format, ...) klib::printf_template(info_node_put, format __VA_OPT__(,) __VA_ARGS__)
 
@@ -92,15 +94,21 @@ namespace procfs {
         return count;
     }
 
+    void InfoNode::grow_to(usize length) {
+        NodeData *node_data = (NodeData*)fs_data;
+        node_data->size = length;
+        if (node_data->capacity < node_data->size) {
+            while (node_data->capacity < node_data->size)
+                node_data->capacity = klib::max((usize)1, node_data->capacity * 4);
+            node_data->storage = (u8*)klib::realloc(node_data->storage, node_data->capacity);
+        }
+    }
+
     isize InfoNode::write_contents(const void *buf, usize count, usize offset) {
         NodeData *node_data = (NodeData*)fs_data;
         if (count == 0) [[unlikely]] return 0;
-        if (offset + count > node_data->size) {
-            node_data->size = offset + count;
-            while (node_data->capacity < node_data->size)
-                node_data->capacity = klib::max((usize)1, node_data->capacity * 2);
-            node_data->storage = (u8*)klib::realloc(node_data->storage, node_data->capacity);
-        }
+        if (offset + count > node_data->size)
+            grow_to(offset + count);
         memcpy(node_data->storage + offset, buf, count);
         return count;
     }
@@ -308,6 +316,34 @@ namespace procfs {
         vfs::create_entry(process_dir, "maps", new InfoNode([process] (InfoNode *self) {
             if (process->pagemap)
                 process->pagemap->print(info_node_put);
+        }, vfs::NodeType::REGULAR), uid, gid, 0444);
+
+        vfs::create_entry(process_dir, "cmdline", new InfoNode([process] (InfoNode *self) {
+            if (!process->pagemap) return;
+            if (process->arg_end <= process->arg_start) return;
+
+            usize count = process->arg_end - process->arg_start;
+            if (count > ARG_MAX) return;
+            self->grow_to(count);
+
+            NodeData *node_data = (NodeData*)self->fs_data;
+            isize ret = process->pagemap->access_memory(process->arg_start, node_data->storage, count, false);
+            if (ret < 0) ret = 0;
+            node_data->size = ret;
+        }, vfs::NodeType::REGULAR), uid, gid, 0444);
+
+        vfs::create_entry(process_dir, "environ", new InfoNode([process] (InfoNode *self) {
+            if (!process->pagemap) return;
+            if (process->env_end <= process->env_start) return;
+
+            usize count = process->env_end - process->env_start;
+            if (count > ARG_MAX) return;
+            self->grow_to(count);
+
+            NodeData *node_data = (NodeData*)self->fs_data;
+            isize ret = process->pagemap->access_memory(process->env_start, node_data->storage, count, false);
+            if (ret < 0) ret = 0;
+            node_data->size = ret;
         }, vfs::NodeType::REGULAR), uid, gid, 0444);
 
         vfs::create_entry(process_dir, "cwd", new InfoNode([process] (InfoNode *self) {

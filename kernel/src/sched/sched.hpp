@@ -130,6 +130,8 @@ namespace sched {
         bool dumpable = true;
 
         uptr mmap_anon_base = 0; // used for mmap bump allocator
+        uptr arg_start = 0, arg_end = 0;
+        uptr env_start = 0, env_end = 0;
 
         Process *parent = nullptr;
         klib::ListHead children_list, sibling_link;

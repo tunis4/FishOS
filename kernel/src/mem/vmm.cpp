@@ -180,6 +180,42 @@ namespace mem {
             return handle_page_fault(virt);
     }
 
+    isize Pagemap::access_memory(uptr virt, void *target, usize count, bool write) {
+        uptr start = virt, end = virt + count;
+        uptr start_page_virt = klib::align_down(start, 0x1000);
+        uptr end_page_virt = klib::align_down(end, 0x1000);
+
+        usize transferred = 0;
+        for (uptr page_virt = start_page_virt; page_virt <= end_page_virt; page_virt += 0x1000) {
+            uptr page_ptr = hhdm;
+            usize bytes_in_page = 0x1000;
+            if (page_virt < start) {
+                usize offset = start - page_virt;
+                page_ptr += offset;
+                bytes_in_page -= offset;
+            }
+            if (page_virt + 0x1000 >= end) {
+                bytes_in_page -= page_virt + 0x1000 - end;
+            }
+
+            if (bytes_in_page == 0)
+                return transferred;
+
+            isize page_phy = get_physical_addr(page_virt);
+            if (page_phy == -EFAULT)
+                return transferred ? transferred : -EFAULT;
+            page_ptr += page_phy;
+
+            if (write)
+                memcpy((void*)page_ptr, (u8*)target + transferred, bytes_in_page);
+            else
+                memcpy((u8*)target + transferred, (void*)page_ptr, bytes_in_page);
+
+            transferred += bytes_in_page;
+        }
+        return transferred;
+    }
+
     MappedRange* Pagemap::addr_to_range(uptr virt) {
         if (cached_range_lookup && virt >= cached_range_lookup->base && virt < cached_range_lookup->end())
             return cached_range_lookup;
@@ -199,7 +235,7 @@ namespace mem {
         return nullptr;
     }
 
-    // returns errno if the page fault couldnt be handled
+    // returns EFAULT if the page fault couldnt be handled
     isize Pagemap::handle_page_fault(uptr virt) {
         // klib::SpinlockGuard guard(this->lock);
 

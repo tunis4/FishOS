@@ -87,6 +87,7 @@ namespace mem {
         void activate();
         u64* find_page_table_entry(uptr virt, bool create_missing = false);
         isize get_physical_addr(uptr virt);
+        isize access_memory(uptr virt, void *target, usize count, bool write);
 
         void map_page(uptr phy, uptr virt, u64 flags);
         void map_pages(uptr phy, uptr virt, usize size, u64 flags);

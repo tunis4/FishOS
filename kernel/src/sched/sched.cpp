@@ -441,10 +441,25 @@ namespace sched {
         uptr *execfn = stack;
         memcpy(execfn, path, path_length);
 
-        for (int i = 0; i < envp_len; i++) {
+        process->env_end = (uptr)stack;
+        for (int i = envp_len - 1; i >= 0; i--) {
             usize length = klib::strlen(envp[i]);
             stack = (uptr*)((uptr)stack - length - 1);
             memcpy(stack, envp[i], length);
+        }
+        process->env_start = (uptr)stack;
+
+        process->arg_end = (uptr)stack;
+        for (int i = argv_len - 1; i >= 0; i--) {
+            usize length = klib::strlen(argv[i]);
+            stack = (uptr*)((uptr)stack - length - 1);
+            memcpy(stack, argv[i], length);
+        }
+
+        if (interpreter_arg) {
+            usize length = klib::strlen(interpreter_arg);
+            stack = (uptr*)((uptr)stack - length - 1);
+            memcpy(stack, interpreter_arg, length);
         }
 
         int num_interpreter_args = (interpreter_path ? 1 : 0) + (interpreter_arg ? 1 : 0);
@@ -453,17 +468,7 @@ namespace sched {
             stack = (uptr*)((uptr)stack - length - 1);
             memcpy(stack, interpreter_path, length);
         }
-        if (interpreter_arg) {
-            usize length = klib::strlen(interpreter_arg);
-            stack = (uptr*)((uptr)stack - length - 1);
-            memcpy(stack, interpreter_arg, length);
-        }
-
-        for (int i = 0; i < argv_len; i++) {
-            usize length = klib::strlen(argv[i]);
-            stack = (uptr*)((uptr)stack - length - 1);
-            memcpy(stack, argv[i], length);
-        }
+        process->arg_start = (uptr)stack;
 
         stack = (uptr*)klib::align_down((uptr)stack, 16);
         if (((argv_len + envp_len + num_interpreter_args + 1) & 1) != 0) {
@@ -471,43 +476,50 @@ namespace sched {
         }
 
         *(--stack) = 0; *(--stack) = 0;
-        stack -= 2; stack[0] = AT_SECURE; stack[1] = 0;
-        stack -= 2; stack[0] = AT_ENTRY;  stack[1] = auxv.at_entry;
-        stack -= 2; stack[0] = AT_PHDR;   stack[1] = auxv.at_phdr;
-        stack -= 2; stack[0] = AT_PHENT;  stack[1] = auxv.at_phent;
-        stack -= 2; stack[0] = AT_PHNUM;  stack[1] = auxv.at_phnum;
-        stack -= 2; stack[0] = AT_PAGESZ; stack[1] = 0x1000;
         stack -= 2; stack[0] = AT_EXECFN; stack[1] = (uptr)execfn;
         stack -= 2; stack[0] = AT_RANDOM; stack[1] = (uptr)random_data;
-
-        uptr old_stack = thread->user_stack;
-        old_stack -= path_length + 1;
-        old_stack -= 16;
-
-        *(--stack) = 0;
+        stack -= 2; stack[0] = AT_SECURE; stack[1] = 0;
+        stack -= 2; stack[0] = AT_EGID;   stack[1] = thread->cred.gids.eid;
+        stack -= 2; stack[0] = AT_GID;    stack[1] = thread->cred.gids.rid;
+        stack -= 2; stack[0] = AT_EUID;   stack[1] = thread->cred.uids.eid;
+        stack -= 2; stack[0] = AT_UID;    stack[1] = thread->cred.uids.rid;
+        stack -= 2; stack[0] = AT_ENTRY;  stack[1] = auxv.at_entry;
+        stack -= 2; stack[0] = AT_FLAGS;  stack[1] = 0;
+        stack -= 2; stack[0] = AT_PHNUM;  stack[1] = auxv.at_phnum;
+        stack -= 2; stack[0] = AT_PHENT;  stack[1] = auxv.at_phent;
+        stack -= 2; stack[0] = AT_PHDR;   stack[1] = auxv.at_phdr;
+        stack -= 2; stack[0] = AT_PAGESZ; stack[1] = 0x1000;
+        
+        *(--stack) = 0; // null terminator for envp
         stack -= envp_len;
+        
+        uptr current_str_addr = process->env_start;
         for (int i = 0; i < envp_len; i++) {
-            old_stack -= klib::strlen(envp[i]) + 1;
-            stack[i] = old_stack;
+            stack[i] = current_str_addr;
+            current_str_addr += klib::strlen(envp[i]) + 1;
         }
 
-        *(--stack) = 0;
+        *(--stack) = 0; // null terminator for argv
         stack -= argv_len + num_interpreter_args;
+
+        current_str_addr = process->arg_start;
+        int arg_ptr_idx = 0;
+
         if (interpreter_path) {
-            old_stack -= klib::strlen(interpreter_path) + 1;
-            stack[0] = old_stack;
+            stack[arg_ptr_idx++] = current_str_addr;
+            current_str_addr += klib::strlen(interpreter_path) + 1;
         }
         if (interpreter_arg) {
-            old_stack -= klib::strlen(interpreter_arg) + 1;
-            stack[1] = old_stack;
+            stack[arg_ptr_idx++] = current_str_addr;
+            current_str_addr += klib::strlen(interpreter_arg) + 1;
         }
 
         for (int i = 0; i < argv_len; i++) {
-            old_stack -= klib::strlen(argv[i]) + 1;
-            stack[i + num_interpreter_args] = old_stack;
+            stack[arg_ptr_idx++] = current_str_addr;
+            current_str_addr += klib::strlen(argv[i]) + 1;
         }
 
-        *(--stack) = argv_len + num_interpreter_args;
+        *(--stack) = argv_len + num_interpreter_args; // argc
 
         thread->user_stack = (uptr)stack;
         thread->gpr_state.rsp = thread->user_stack;
@@ -1236,6 +1248,19 @@ namespace sched {
             const char *name = (const char*)arg1;
             klib::strncpy(thread->name, name, 16);
             thread->name[15] = 0;
+        } return 0;
+        case PR_SET_MM: {
+            if (!thread->cred.has_capability(CAP_SYS_RESOURCE))
+                return -EPERM;
+            switch (arg1) {
+            case PR_SET_MM_ARG_START: process->arg_start = arg2; break;
+            case PR_SET_MM_ARG_END: process->arg_end = arg2; break;
+            case PR_SET_MM_ENV_START: process->env_start = arg2; break;
+            case PR_SET_MM_ENV_END: process->env_end = arg2; break;
+            default:
+                klib::printf("prctl: unimplemented PR_SET_MM op %d\n", op);
+                return -EINVAL;
+            }
         } return 0;
         case PR_CAPBSET_READ: return 1;
         default:

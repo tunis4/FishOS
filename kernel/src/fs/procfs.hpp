@@ -15,6 +15,7 @@ namespace procfs {
         isize seek(vfs::FileDescription *fd, usize position, isize offset, int whence) override;
 
         void print_char(char c);
+        void grow_to(usize length);
 
     private:
         isize generate_contents();
