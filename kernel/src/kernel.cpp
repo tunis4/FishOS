@@ -189,6 +189,7 @@ extern "C" [[noreturn]] void kmain() {
 static void create_device_file(const char *path, uint major, uint minor, bool is_char) {
     auto *entry = vfs::path_to_entry(path, nullptr);
     ASSERT(entry->vnode == nullptr);
+    ASSERT(entry->parent != nullptr);
     if (is_char)
         entry->vnode = dev::CharDevNode::create_node(dev::make_dev_id(major, minor));
     else
@@ -214,6 +215,10 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
     klib::printf("Loading initramfs file %s (size: %ld KiB)\n", initramfs_module->path, initramfs_module->size / 1024);
     initramfs::load_into(vfs::get_root_entry(), initramfs_module->address, initramfs_module->size);
 
+    auto *dev_dir = vfs::path_to_entry("/dev");
+    if (dev_dir->vnode == nullptr)
+        dev_dir->create(vfs::NodeType::DIRECTORY, 0, 0, 0755);
+
     create_device_file("/dev/mem",      1, 1, true);
     create_device_file("/dev/null",     1, 3, true);
     create_device_file("/dev/port",     1, 4, true);
@@ -230,6 +235,7 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
 
     auto *input_dir = vfs::path_to_entry("/dev/input");
     ASSERT(input_dir->vnode == nullptr);
+    ASSERT(input_dir->parent != nullptr);
     input_dir->create(vfs::NodeType::DIRECTORY, 0, 0, 0755);
     if (dev::input::main_keyboard)
         create_device_file("/dev/input/event0", 13, 64, true);
@@ -238,6 +244,7 @@ static void create_device_file(const char *path, uint major, uint minor, bool is
 
     auto *pts_dir = vfs::path_to_entry("/dev/pts");
     ASSERT(pts_dir->vnode == nullptr);
+    ASSERT(pts_dir->parent != nullptr);
     pts_dir->create(vfs::NodeType::DIRECTORY, 0, 0, 0755);
     create_device_file("/dev/pts/ptmx", 5, 2, true);
     create_device_file("/dev/ptmx",     5, 2, true);
