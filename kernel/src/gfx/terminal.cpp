@@ -92,6 +92,13 @@ namespace gfx {
         set_char_at(cursor_x, cursor_y, c, current_fg | (is_bold ? bold_flag : 0), current_bg);
     }
 
+    void VirtualTerminal::move_char(usize old_cx, usize old_cy, usize new_cx, usize new_cy) {
+        usize old_index = old_cy * width_chars + old_cx;
+        auto c = buffer[old_index];
+        set_char_at(new_cx, new_cy, c.c(), c.fg(), c.bg());
+        set_char_at(old_cx, old_cy, ' ', default_fg_color, default_bg_color);
+    }
+
     void VirtualTerminal::scroll() {
         for (int y = 0; y < height_chars - 1; y++) {
             for (int x = 0; x < width_chars; x++) {
@@ -188,6 +195,7 @@ namespace gfx {
     void VirtualTerminal::reset_control_sequence() {
         csi_progress = 0;
         csi_arg_index = 0;
+        csi_arg_count = 0;
         memset(csi_args, 0, sizeof(csi_args));
         csi_question_mark = false;
     }
@@ -271,6 +279,23 @@ namespace gfx {
             move_cursor(cursor_x, klib::clamp(csi_args[0] - 1, 0, height_chars - 1));
         } else if (code == 'r') {
             move_cursor(0, 0);
+        } else if (code == 'P') {
+            if (csi_arg_count == 0) csi_args[0] = 1;
+            int last = klib::clamp(cursor_x + csi_args[0], 0, width_chars);
+            for (int x = cursor_x; x < last; x++)
+                set_char_at(x, cursor_y, ' ', default_fg_color, default_bg_color);
+            int count = width_chars - last;
+            for (int i = 0; i < count; i++)
+                move_char(last + i, cursor_y, cursor_x + i, cursor_y);
+        } else if (code == 'X') {
+            if (csi_arg_count == 0) csi_args[0] = 1;
+            int last = klib::clamp(cursor_x + csi_args[0], 0, width_chars);
+            for (int x = cursor_x; x < last; x++)
+                set_char_at(x, cursor_y, ' ', default_fg_color, default_bg_color);
+        } else if (code == 'h' || code == 'l') {
+            bool mode_enabled = code == 'h';
+            if (csi_args[0] == 4)
+                insert_mode = mode_enabled;
         }
     }
 
@@ -278,16 +303,18 @@ namespace gfx {
         klib::SpinlockGuard guard(lock);
 
         if (csi_progress == 1) {
-            if (c == '[')
+            if (c == '[') {
                 csi_progress = 2;
-            else
+            } else {
                 reset_control_sequence();
+            }
             return;
         }
 
         if (csi_progress == 2) {
             if (c >= '0' && c <= '9') {
                 csi_args[csi_arg_index] = (csi_args[csi_arg_index] * 10) + (c - '0');
+                csi_arg_count = csi_arg_index + 1;
             } else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
                 apply_control_sequence(c);
                 reset_control_sequence();
@@ -317,6 +344,8 @@ namespace gfx {
         case '\r':
             cursor_x = 0;
             break;
+        case 0xB:
+        case 0xC:
         case '\n':
             cursor_x = 0;
             cursor_y++;
@@ -325,11 +354,22 @@ namespace gfx {
         case '\e':
             csi_progress = 1;
             break;
-        case 0x7:
+        case '\a': // bell
             break;
-        default:
+        case 0:
+        case 0x7f:
+            break;
+        case 14:
+        case 15:
+            break;
+        default: {
+            if (insert_mode)
+                for (int i = width_chars - 1; i >= cursor_x; i--)
+                    move_char(i, cursor_y, i + 1, cursor_y);
+
             set_char_at_cursor(c);
             cursor_x++;
+        }
         }
 
         if (cursor_x >= width_chars) {

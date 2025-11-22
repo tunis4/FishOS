@@ -7,31 +7,17 @@
 namespace klib {
     klib::Spinlock print_lock;
 
-    int putchar(char c) {
-        // output to serial port first
-        if (c == '\n') {
+    int serial_putchar(char c) {
+        if (c == '\n')
             cpu::out<u8>(0x3F8, '\r'); // maybe needed
-        } else if (c == '\b') {
-            cpu::out<u8>(0x3F8, '\b');
-            cpu::out<u8>(0x3F8, ' '); // clear the last char
-        }
         cpu::out<u8>(0x3F8, c);
-        
-        if (gfx::kernel_terminal_enabled) {
+        return c;
+    }
+
+    int putchar(char c) {
+        serial_putchar(c);
+        if (gfx::kernel_terminal_enabled)
             gfx::kernel_terminal().write_char(c);
-        } else { // very simple early terminal for printing boot errors
-            // auto &fb = gfx::main_framebuffer;
-            // if (fb.addr) {
-            //     static usize x = 0;
-            //     static usize y = 0;
-            //     if (x > fb.width / 8) { x = 0; y++; }
-            //     if (y > fb.height / 16) { y = 0; }
-            //     if (c == '\n') { x = 0; y++; return c; }
-            //     fb.draw_psf_char(c, x, y, 4, 4, ~0, 0);
-            //     x++;
-            // }
-        }
-        
         return c;
     }
 

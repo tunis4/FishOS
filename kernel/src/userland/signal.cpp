@@ -68,7 +68,7 @@ namespace userland {
         ASSERT(signal != -1);
         thread->pending_signals &= ~(get_signal_bit(signal));
 
-        if (signal != SIGCHLD)
+        if (signal != SIGCHLD && signal != SIGWINCH)
             klib::printf("[%d] dispatching signal %d\n", thread->tid, signal);
 
         auto *state = &thread->gpr_state;

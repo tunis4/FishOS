@@ -106,6 +106,18 @@ namespace dev::tty {
         case KEY_LEFT:  input_buffer.write_truncate("\e[D", 3); break;
         case KEY_RIGHT: input_buffer.write_truncate("\e[C", 3); break;
         case KEY_DOWN:  input_buffer.write_truncate("\e[B", 3); break;
+        case KEY_F1:    input_buffer.write_truncate("\x8fP", 2); break;
+        case KEY_F2:    input_buffer.write_truncate("\x8fQ", 2); break;
+        case KEY_F3:    input_buffer.write_truncate("\x8fR", 2); break;
+        case KEY_F4:    input_buffer.write_truncate("\x8fS", 2); break;
+        case KEY_F5:    input_buffer.write_truncate("\e[15~", 5); break;
+        case KEY_F6:    input_buffer.write_truncate("\e[17~", 5); break;
+        case KEY_F7:    input_buffer.write_truncate("\e[18~", 5); break;
+        case KEY_F8:    input_buffer.write_truncate("\e[19~", 5); break;
+        case KEY_F9:    input_buffer.write_truncate("\e[20~", 5); break;
+        case KEY_F10:   input_buffer.write_truncate("\e[21~", 5); break;
+        case KEY_F11:   input_buffer.write_truncate("\e[23~", 5); break;
+        case KEY_F12:   input_buffer.write_truncate("\e[24~", 5); break;
         default:
             char c = keycode_map[input_event.code];
             if (!c)

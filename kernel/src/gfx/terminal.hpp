@@ -74,12 +74,16 @@ namespace gfx {
         int csi_progress = 0;
         int csi_args[max_csi_args] = {};
         int csi_arg_index = 0;
+        int csi_arg_count = 0;
         bool csi_question_mark = false;
+
+        bool insert_mode = false;
 
         void draw_psf_char(Font *font, u32 c, u16 cx, u16 cy, u16 offx, u16 offy, u32 fg, u32 bg);
         void draw_char_at(usize cx, usize cy, char c, u32 fg, u32 bg);
         void set_char_at(usize cx, usize cy, char c, u32 fg, u32 bg);
         void set_char_at_cursor(char c);
+        void move_char(usize old_cx, usize old_cy, usize new_cx, usize new_cy);
 
         void scroll(); // scrolls down by 1 line
 
