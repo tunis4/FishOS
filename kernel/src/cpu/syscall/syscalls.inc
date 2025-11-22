@@ -23,6 +23,8 @@ SYSCALL(   sched, sched_yield);
 SYSCALL(   sched, sched_getaffinity);
 SYSCALL(   sched, getcpu);
 SYSCALL(   sched, prlimit64);
+SYSCALL(   sched, getrlimit);
+SYSCALL(   sched, setrlimit);
 SYSCALL(   sched, prctl);
 SYSCALL(     mem, mmap);
 SYSCALL(     mem, munmap);

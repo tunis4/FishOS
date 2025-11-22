@@ -202,5 +202,7 @@ namespace sched {
     isize syscall_sched_getaffinity(int pid, usize cpusetsize, cpu_set_t *mask);
     isize syscall_getcpu(uint *cpu, uint *node);
     isize syscall_prlimit64(int pid, uint resource, const rlimit64 *new_limit, rlimit64 *old_limit);
+    isize syscall_getrlimit(uint resource, rlimit64 *limit);
+    isize syscall_setrlimit(uint resource, const rlimit64 *limit);
     isize syscall_prctl(int op, usize arg1, usize arg2, usize arg3, usize arg4);
 }

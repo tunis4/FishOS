@@ -1203,11 +1203,9 @@ namespace sched {
         return 0;
     }
 
-    isize syscall_prlimit64(int pid, uint resource, const rlimit64 *new_limit, rlimit64 *old_limit) {
-        log_syscall("prlimit64(%d, %u, %#lX, %#lX)\n", pid, resource, (uptr)new_limit, (uptr)old_limit);
-
+    static isize prlimit_impl(int pid, uint resource, const rlimit64 *new_limit, rlimit64 *old_limit) {
         if (new_limit) {
-            klib::printf("prlimit64: setting new limit is unsupported (resource type: %u)\n", resource);
+            klib::printf("prlimit: setting new limit is unsupported (resource type: %u)\n", resource);
             return 0;
         }
         if (old_limit == nullptr)
@@ -1226,9 +1224,24 @@ namespace sched {
         case RLIMIT_MEMLOCK: *old_limit = { .rlim_cur = RLIM64_INFINITY, .rlim_max = RLIM64_INFINITY }; return 0;
         case RLIMIT_CORE:    *old_limit = { .rlim_cur =               0, .rlim_max =               0 }; return 0;
         default:
-            klib::printf("prlimit64: unsupported resource type %u\n", resource);
+            klib::printf("prlimit: unsupported resource type %u\n", resource);
             return -EINVAL;
         }
+    }
+
+    isize syscall_prlimit64(int pid, uint resource, const rlimit64 *new_limit, rlimit64 *old_limit) {
+        log_syscall("prlimit64(%d, %u, %#lX, %#lX)\n", pid, resource, (uptr)new_limit, (uptr)old_limit);
+        return prlimit_impl(pid, resource, new_limit, old_limit);
+    }
+
+    isize syscall_getrlimit(uint resource, rlimit64 *limit) {
+        log_syscall("getrlimit(%u, %#lX)\n", resource, (uptr)limit);
+        return prlimit_impl(0, resource, nullptr, limit);
+    }
+
+    isize syscall_setrlimit(uint resource, const rlimit64 *limit) {
+        log_syscall("setrlimit(%u, %#lX)\n", resource, (uptr)limit);
+        return prlimit_impl(0, resource, limit, nullptr);
     }
 
     isize syscall_prctl(int op, usize arg1, usize arg2, usize arg3, usize arg4) {
