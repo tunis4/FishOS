@@ -38,7 +38,7 @@ ln -s ../../../../../../bus/idk $SYSROOT/sys/class/graphics/fb0/device/subsystem
 # Prepare the iso and boot directories.
 mkdir -pv $ISOROOT/boot
 cp kernel/build/fishix $ISOROOT/boot/
-cp $WORK_DIR/initramfs.tar $ISOROOT/boot/
+mv $WORK_DIR/initramfs.tar $ISOROOT/boot/
 cp distro-files/limine.conf $ISOROOT/boot/
 
 # Install the limine binaries.
