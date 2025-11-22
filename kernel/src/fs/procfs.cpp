@@ -306,7 +306,8 @@ namespace procfs {
         process->procfs_task_dir->create(vfs::NodeType::DIRECTORY, uid, gid, 0555);
 
         vfs::create_entry(process_dir, "maps", new InfoNode([process] (InfoNode *self) {
-            process->pagemap->print(info_node_put);
+            if (process->pagemap)
+                process->pagemap->print(info_node_put);
         }, vfs::NodeType::REGULAR), uid, gid, 0444);
 
         vfs::create_entry(process_dir, "cwd", new InfoNode([process] (InfoNode *self) {

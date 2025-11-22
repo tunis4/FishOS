@@ -205,6 +205,7 @@ namespace sched {
                 file_descriptors[i].close(this, i);
 
         delete pagemap;
+        pagemap = nullptr;
 
         zombie_event.trigger();
         parent->send_signal(SIGCHLD);
